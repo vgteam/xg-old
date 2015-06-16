@@ -4,7 +4,7 @@
 
 `vg`'s current graph memory model is weak and extremely bloated. It relies on fixed-width 64-bit integer ids and large hash tables mapping these to other entities. This makes it difficult to store in memory, and a general-purpose key-value store (rocksdb) is used to allow low-memory access to the entire graph. Although this design has some advantages, querying the graph requires costly IO operations, and thus use must be managed carefully when developing high-performance applications.
 
-Fully-indexed graphs should be cheap to store and hold in memory, but it doesn't seem there is a standard approach that can be used just for high-performance access to the sequence and identifier space of the graph. Most work has gone into improving performance for querying the text of such a graph (GCSA)[https://github.com/jltsiren/gcsa2] or generating one out of sequencing reads (assemblers such as [SGA](https://github.com/jts/sga) or [fermi2](https://github.com/lh3/fermi2)).
+Fully-indexed graphs should be cheap to store and hold in memory, but it doesn't seem there is a standard approach that can be used just for high-performance access to the sequence and identifier space of the graph. Most work has gone into improving performance for querying the text of such a graph [GCSA](https://github.com/jltsiren/gcsa2) or generating one out of sequencing reads (assemblers such as [SGA](https://github.com/jts/sga) or [fermi2](https://github.com/lh3/fermi2)).
 
 The basic requirement is a system that a minimal amount of memory to store the sequence of the graph, its edges, and paths in the graph, but still allows constant-time access to the essential features of the graph. The system should support accessing:
 
