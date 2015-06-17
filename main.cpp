@@ -1,9 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <getopt.h>
-#include <sdsl/bit_vectors.hpp>
+#include "sdsl/bit_vectors.hpp"
 #include "stream.hpp"
-#include "cpp/example.pb.h"
+#include "cpp/vg.pb.h"
 
 using namespace std;
 using namespace sdsl;
