@@ -2,7 +2,7 @@
 
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
-LIBS=main.o cpp/vg.pb.o
+LIBS=main.o cpp/vg.pb.o succinct.o
 INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Istream
 LDFLAGS=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -lprotobuf -lsdsl -lz
 STREAM=stream
@@ -11,7 +11,7 @@ LIBPROTOBUF=stream/protobuf/libprotobuf.a
 LIBSDSL=sdsl-lite/build/lib/libsdsl.a
 EXECUTABLE=succinctg
 
-all: $(EXECUTABLE) doc
+all: $(EXECUTABLE)
 
 doc: README.md
 	pandoc -o README.html -s README.md
@@ -30,8 +30,11 @@ cpp/vg.pb.h: vg.proto $(LIBPROTOBUF)
 cpp/vg.pb.o: cpp/vg.pb.h cpp/vg.pb.cc
 	$(CXX) $(CXXFLAGS) -c -o cpp/vg.pb.o cpp/vg.pb.cc $(INCLUDES)
 
-main.o: main.cpp
+main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o main.o main.cpp $(INCLUDES)
+
+succinct.o: succinct.cpp $(LIBSDSL) cpp/vg.pb.h
+	$(CXX) $(CXXFLAGS) -c -o succinct.o succinct.cpp $(INCLUDES)
 
 $(EXECUTABLE): $(LIBS)
 	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDFLAGS)
