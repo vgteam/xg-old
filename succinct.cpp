@@ -71,36 +71,38 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     // because we need to ensure full coverage of node space
 
     size_t f_itr = 0;
-    for (auto& e : from_to) {
+    for (auto& n : node_id_rank) {
         //map<int64_t, set<int64_t> > from_to;
-        int64_t f_id = e.first;
-        size_t f_rank = node_id_rank[f_id];
+        int64_t f_id = n.first;
+        size_t f_rank = n.second;
         f_iv[f_itr] = f_rank;
         f_bv[f_itr] = 1;
         ++f_itr;
-        for (auto& t_id : e.second) {
-            size_t t_rank = node_id_rank[t_id];
-            f_iv[f_itr] = t_rank;
-            f_bv[f_itr] = 0;
-            ++f_itr;
+        if (from_to.find(f_id) != from_to.end()) {
+            for (auto& t_id : from_to[f_id]) {
+                size_t t_rank = node_id_rank[t_id];
+                f_iv[f_itr] = t_rank;
+                f_bv[f_itr] = 0;
+                ++f_itr;
+            }
         }
     }
 
     size_t t_itr = 0;
-    for (auto& e : to_from) {
-        //map<int64_t, set<int64_t> > to_from;
-        int64_t t_id = e.first;
-        size_t t_rank = node_id_rank[t_id];
+    for (auto& n : node_id_rank) {
+        //map<int64_t, set<int64_t> > to_from
+        int64_t t_id = n.first;
+        size_t t_rank = n.second;
         t_iv[t_itr] = t_rank;
         t_bv[t_itr] = 1;
         ++t_itr;
-        //cerr << "to: " << e.first << endl;
-        for (auto& f_id : e.second) {
-            size_t f_rank = node_id_rank[f_id];
-            t_iv[t_itr] = f_rank;
-            t_bv[t_itr] = 0;
-            ++t_itr;
-            //cerr << "from: " << f_id << endl;
+        if (to_from.find(t_id) != to_from.end()) {
+            for (auto& f_id : to_from[t_id]) {
+                size_t f_rank = node_id_rank[f_id];
+                t_iv[t_itr] = f_rank;
+                t_bv[t_itr] = 0;
+                ++t_itr;
+            }
         }
     }
 
@@ -142,6 +144,19 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
     cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
 
+    //cerr << s_civ << endl;
+    /*
+    for (int i = 0; i < s_civ.size(); ++i) {
+        cerr << (char) s_civ[i];
+    } cerr << endl;
+    cerr << s_cbv << endl;
+    cerr << f_civ << endl;
+    cerr << f_cbv << endl;
+    cerr << t_civ << endl;
+    cerr << t_cbv << endl;
+    */
+
+
     int max_id = s_cbv_rank(s_cbv.size());
     for (auto& p : node_label) {
         int64_t id = p.first;
@@ -165,22 +180,24 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     // todo, why -1?
     for (size_t j = 0; j < f_civ.size()-1; ++j) {
-        cerr << j << endl;
+        //cerr << j << endl;
         if (f_cbv[j] == 1) continue;
         // from id == rank
-        size_t fid = f_cbv_rank(j)+1;
+        size_t fid = f_cbv_rank(j);
         // to id == f_cbv[j]
         size_t tid = f_civ[j];
-        cerr << fid << " " << tid << endl;
+        //cerr << fid << " " << tid << endl;
         assert(from_to[fid].count(tid));
     }
     
     for (size_t j = 0; j < t_civ.size()-1; ++j) {
+        //cerr << j << endl;
         if (t_cbv[j] == 1) continue;
         // from id == rank
-        size_t tid = t_cbv_rank(j)+1;
+        size_t tid = t_cbv_rank(j);
         // to id == f_cbv[j]
         size_t fid = t_civ[j];
+        //cerr << tid << " " << fid << endl;
         assert(to_from[tid].count(fid));
     }
 
