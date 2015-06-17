@@ -6,6 +6,8 @@
 #include <map>
 #include "cpp/vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
+#include "sdsl/enc_vector.hpp"
+#include "sdsl/vlc_vector.hpp"
 
 namespace scg {
 
@@ -48,10 +50,8 @@ private:
     bit_vector f_bv;
     int_vector<> t_iv;
     bit_vector t_bv;
-    map<string, bit_vector> p_bvs;
-    // we'll need to assign with this
-    // util::assign(x, bit_vector(10000000,1));
-    
+    map<string, bit_vector> p_bv;
+
 };
 
 }
