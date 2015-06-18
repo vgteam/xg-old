@@ -3,7 +3,7 @@
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 LIBS=main.o cpp/vg.pb.o succinct.o
-INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Istream
+INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Isdsl-lite/build/external/libdivsufsort-2.0.1/include -Istream
 LDFLAGS=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -lprotobuf -lsdsl -lz
 STREAM=stream
 PROTOBUF=$(STREAM)/protobuf

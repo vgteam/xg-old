@@ -7,7 +7,9 @@
 #include "cpp/vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
 #include "sdsl/enc_vector.hpp"
+#include "sdsl/dac_vector.hpp"
 #include "sdsl/vlc_vector.hpp"
+#include "sdsl/wavelet_trees.hpp"
 
 namespace scg {
 

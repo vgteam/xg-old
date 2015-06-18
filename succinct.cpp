@@ -84,8 +84,6 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
-    map<int64_t, size_t> node_rank;
-    map<size_t, int64_t> node_id;
     size_t i = 0; // insertion point
     size_t r = 1;
     for (auto& p : node_label) {
@@ -93,9 +91,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         const string& l = p.second;
         s_bv[i] = 1; // record node start
         i_iv[r-1] = id;
-        node_rank[id] = r;
         ++r;
-        //node_id[r] = id;
         for (auto c : l) {
             s_iv[i++] = dna3bit(c); // store sequence
         }
@@ -104,6 +100,11 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     // we have to process all the nodes before we do the edges
     // because we need to ensure full coverage of node space
+
+    util::bit_compress(i_iv);
+    enc_vector<> i_civ(i_iv);
+    wt_int<> i_wt;
+    construct_im(i_wt, i_iv);
 
     size_t f_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
@@ -115,7 +116,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         ++f_itr;
         if (from_to.find(f_id) != from_to.end()) {
             for (auto& t_id : from_to[f_id]) {
-                size_t t_rank = node_rank[t_id];
+                size_t t_rank = i_wt.select(1, t_id)+1;
                 f_iv[f_itr] = t_rank;
                 f_bv[f_itr] = 0;
                 ++f_itr;
@@ -132,7 +133,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         ++t_itr;
         if (to_from.find(t_id) != to_from.end()) {
             for (auto& f_id : to_from[t_id]) {
-                size_t f_rank = node_rank[f_id];
+                size_t f_rank = i_wt.select(1, f_id)+1;
                 t_iv[t_itr] = f_rank;
                 t_bv[t_itr] = 0;
                 ++t_itr;
@@ -142,7 +143,6 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     // to label the paths we'll need to compress and index our vectors
     util::bit_compress(s_iv);
-    util::bit_compress(i_iv);
     util::bit_compress(f_iv);
     util::bit_compress(t_iv);
 
@@ -153,14 +153,14 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     rank_support_v<1> t_bv_rank(&t_bv);
     bit_vector::select_1_type t_bv_select(&t_bv);
 
+    
     // compressed vectors of the above
-    vlc_vector<> s_civ(s_iv);
+    //vlc_vector<> s_civ(s_iv);
     rrr_vector<> s_cbv(s_bv);
     rrr_vector<>::rank_1_type s_cbv_rank(&s_cbv);
     rrr_vector<>::select_1_type s_cbv_select(&s_cbv);
 
-    enc_vector<> i_civ(i_iv);
-    
+    /*
     vlc_vector<> f_civ(f_iv);
     rrr_vector<> f_cbv(f_bv);
     rrr_vector<>::rank_1_type f_cbv_rank(&f_cbv);
@@ -170,8 +170,10 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     rrr_vector<> t_cbv(t_bv);
     rrr_vector<>::rank_1_type t_cbv_rank(&t_cbv);
     rrr_vector<>::select_1_type t_cbv_select(&t_cbv);
+    */
     //map<string, sd_vector<> > p_cbv;
-
+    
+    
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
     cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
@@ -181,14 +183,15 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     cerr << "|f_bv| = " << size_in_mega_bytes(f_bv) << endl;
     cerr << "|t_bv| = " << size_in_mega_bytes(t_bv) << endl;
 
-    cerr << "|s_civ| = " << size_in_mega_bytes(s_civ) << endl;
+    //cerr << "|s_civ| = " << size_in_mega_bytes(s_civ) << endl;
     cerr << "|i_civ| = " << size_in_mega_bytes(i_civ) << endl;
-    cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
-    cerr << "|t_civ| = " << size_in_mega_bytes(t_civ) << endl;
+    cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
+    //cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
+    //cerr << "|t_civ| = " << size_in_mega_bytes(t_civ) << endl;
 
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
-    cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
-    cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
+    //cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
+    //cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
 
     //cerr << s_civ << endl;
     /*
@@ -203,12 +206,12 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     cerr << i_civ << endl;
     */
 
-
     int max_id = s_cbv_rank(s_cbv.size());
     for (auto& p : node_label) {
         int64_t id = p.first;
         const string& l = p.second;
-        size_t rank = node_rank[id];
+        //size_t rank = node_rank[id];
+        size_t rank = i_wt.select(1, id)+1;
         //cerr << rank << endl;
         // find the node in the array
         //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
@@ -219,31 +222,31 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         size_t end = rank == max_id ? s_cbv.size() : s_cbv_select(rank+1);
         string s; s.resize(end-start);
         for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
-            s[i-start] = revdna3bit(s_civ[i]);
+            s[i-start] = revdna3bit(s_iv[i]);
         }
         //cerr << id << " " << l << " =? " << s << endl;
         assert(l == s);
     }
 
     // todo, why -1?
-    for (size_t j = 0; j < f_civ.size()-1; ++j) {
+    for (size_t j = 0; j < f_iv.size()-1; ++j) {
         //cerr << j << endl;
-        if (f_cbv[j] == 1) continue;
+        if (f_bv[j] == 1) continue;
         // from id == rank
-        size_t fid = i_civ[f_cbv_rank(j)-1];
+        size_t fid = i_civ[f_bv_rank(j)-1];
         // to id == f_cbv[j]
-        size_t tid = i_civ[f_civ[j]-1];
+        size_t tid = i_civ[f_iv[j]-1];
         //cerr << fid << " " << tid << endl;
         assert(from_to[fid].count(tid));
     }
     
-    for (size_t j = 0; j < t_civ.size()-1; ++j) {
+    for (size_t j = 0; j < t_iv.size()-1; ++j) {
         //cerr << j << endl;
-        if (t_cbv[j] == 1) continue;
+        if (t_bv[j] == 1) continue;
         // from id == rank
-        size_t tid = i_civ[t_cbv_rank(j)-1];
+        size_t tid = i_civ[t_bv_rank(j)-1];
         // to id == f_cbv[j]
-        size_t fid = i_civ[t_civ[j]-1];
+        size_t fid = i_civ[t_iv[j]-1];
         //cerr << tid << " " << fid << endl;
         assert(to_from[tid].count(fid));
     }
