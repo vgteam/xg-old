@@ -18,6 +18,8 @@ The basic requirement is a system that a minimal amount of memory to store the s
 
 ## sketch
 
+[read this in HTML for rendered equations](https://rawgit.com/ekg/succinct-graph/master/README.html)
+
 In theory we could construct a mutable system based on [wavelet tries](http://arxiv.org/abs/1204.3581), but research in this area is very new, and I have not found readily-available code for working with these systems. It should be possible to construct mutable wavelet tries using sdsl-lite as a basis, but at present this may be too complex an objective. An immutable system seems like a straightforward thing to do.
 
 First some definitions. We have a graph $G = N, E, P$ with nodes $N = n_1, \ldots, n_{|N|}$, directed edges $E = e_1, \ldots, e_{|E|}$, and paths $P = p_1, \ldots, p_{|P|}$. Nodes match labels $l_{n_i}$ to ranks $i$ in the collection of node labels: $n_i = l_{n_i}, i$. Edges go from one node to another $e_j = n_x, n_y$. Paths match labels $l_{p_k}$ to sets of nodes and edges $p_k = l_{p_k}, \{ n_1, e_3, n_4, e_5, \ldots \}$.
