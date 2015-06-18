@@ -33,7 +33,7 @@ cpp/vg.pb.o: cpp/vg.pb.h cpp/vg.pb.cc
 main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o main.o main.cpp $(INCLUDES)
 
-succinct.o: succinct.cpp $(LIBSDSL) cpp/vg.pb.h
+succinct.o: succinct.cpp succinct.hpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o succinct.o succinct.cpp $(INCLUDES)
 
 $(EXECUTABLE): $(LIBS)

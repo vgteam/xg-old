@@ -42,14 +42,17 @@ private:
     
     // sequence/integer vector
     int_vector<> s_iv;
-    // maintain old ids from input
-    //int_vector<> i_iv;
     // node starts in sequence, provides id schema
     // rank_1(i) = id
     // select_1(id) = i
     bit_vector s_bv; // node positions in siv
+    // maintain old ids from input
+    int_vector<> i_iv;
+    bit_vector i_bv;
+    // maintain forward links
     int_vector<> f_iv;
     bit_vector f_bv;
+    // and the same data in the reverse direction
     int_vector<> t_iv;
     bit_vector t_bv;
     map<string, bit_vector> p_bv;
