@@ -4,3 +4,6 @@
 [submodule "stream"]
 	path = stream
 	url = https://github.com/ekg/stream.git
+[submodule "bash-tap"]
+	path = bash-tap
+	url = https://github.com/illusori/bash-tap.git

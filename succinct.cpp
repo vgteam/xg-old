@@ -53,14 +53,17 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
-    map<int64_t, size_t> node_id_rank;
+    map<int64_t, size_t> node_rank;
+    map<size_t, int64_t> node_id;
     size_t i = 0; // insertion point
     size_t r = 1;
     for (auto& p : node_label) {
         int64_t id = p.first;
         const string& l = p.second;
         s_bv[i] = 1; // record node start
-        node_id_rank[id] = r++;
+        node_rank[id] = r;
+        node_id[r] = id;
+        ++r;
         for (auto c : l) {
             s_iv[i++] = (int)c; // store sequence
         }
@@ -71,7 +74,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     // because we need to ensure full coverage of node space
 
     size_t f_itr = 0;
-    for (auto& n : node_id_rank) {
+    for (auto& n : node_rank) {
         //map<int64_t, set<int64_t> > from_to;
         int64_t f_id = n.first;
         size_t f_rank = n.second;
@@ -80,7 +83,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         ++f_itr;
         if (from_to.find(f_id) != from_to.end()) {
             for (auto& t_id : from_to[f_id]) {
-                size_t t_rank = node_id_rank[t_id];
+                size_t t_rank = node_rank[t_id];
                 f_iv[f_itr] = t_rank;
                 f_bv[f_itr] = 0;
                 ++f_itr;
@@ -89,7 +92,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     }
 
     size_t t_itr = 0;
-    for (auto& n : node_id_rank) {
+    for (auto& n : node_rank) {
         //map<int64_t, set<int64_t> > to_from
         int64_t t_id = n.first;
         size_t t_rank = n.second;
@@ -98,7 +101,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         ++t_itr;
         if (to_from.find(t_id) != to_from.end()) {
             for (auto& f_id : to_from[t_id]) {
-                size_t f_rank = node_id_rank[f_id];
+                size_t f_rank = node_rank[f_id];
                 t_iv[t_itr] = f_rank;
                 t_bv[t_itr] = 0;
                 ++t_itr;
@@ -161,7 +164,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     for (auto& p : node_label) {
         int64_t id = p.first;
         const string& l = p.second;
-        size_t rank = node_id_rank[id];
+        size_t rank = node_rank[id];
         //cerr << rank << endl;
         // find the node in the array
         //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
@@ -183,9 +186,9 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         //cerr << j << endl;
         if (f_cbv[j] == 1) continue;
         // from id == rank
-        size_t fid = f_cbv_rank(j);
+        size_t fid = node_id[f_cbv_rank(j)];
         // to id == f_cbv[j]
-        size_t tid = f_civ[j];
+        size_t tid = node_id[f_civ[j]];
         //cerr << fid << " " << tid << endl;
         assert(from_to[fid].count(tid));
     }
@@ -194,9 +197,9 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         //cerr << j << endl;
         if (t_cbv[j] == 1) continue;
         // from id == rank
-        size_t tid = t_cbv_rank(j);
+        size_t tid = node_id[t_cbv_rank(j)];
         // to id == f_cbv[j]
-        size_t fid = t_civ[j];
+        size_t fid = node_id[t_civ[j]];
         //cerr << tid << " " << fid << endl;
         assert(to_from[tid].count(fid));
     }

@@ -42,6 +42,8 @@ private:
     
     // sequence/integer vector
     int_vector<> s_iv;
+    // maintain old ids from input
+    //int_vector<> i_iv;
     // node starts in sequence, provides id schema
     // rank_1(i) = id
     // select_1(id) = i

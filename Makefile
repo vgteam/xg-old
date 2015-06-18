@@ -39,6 +39,12 @@ succinct.o: succinct.cpp $(LIBSDSL) cpp/vg.pb.h
 $(EXECUTABLE): $(LIBS)
 	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDFLAGS)
 
+get-deps:
+	echo todo
+
+test:
+	cd test && make
+
 clean:
 	rm -rf cpp
 	rm -f $(EXECUTABLE)
