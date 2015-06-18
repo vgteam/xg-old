@@ -3,6 +3,36 @@
 
 namespace scg {
 
+int dna3bit(char c) {
+    switch (c) {
+    case 'A':
+        return 0;
+    case 'T':
+        return 1;
+    case 'C':
+        return 2;
+    case 'G':
+        return 3;
+    default:
+        return 4;
+    }
+}
+
+char revdna3bit(int i) {
+    switch (i) {
+    case 0:
+        return 'A';
+    case 1:
+        return 'T';
+    case 2:
+        return 'C';
+    case 3:
+        return 'G';
+    default:
+        return 'N';
+    }
+}
+
 SuccinctGraph::SuccinctGraph(istream& in) {
     //, size_t seq_length, size_t node_count, size_t edge_count) {
     // allocate space for construction
@@ -44,7 +74,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
          << path_entry_count << " nodes in paths" << endl;
 
     // set up our compressed representation
-    util::assign(s_iv, int_vector<>(seq_length));
+    util::assign(s_iv, int_vector<>(seq_length, 0, 3));
     util::assign(s_bv, bit_vector(seq_length));
     util::assign(i_iv, int_vector<>(node_count));
     util::assign(f_iv, int_vector<>(entity_count));
@@ -67,7 +97,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         ++r;
         //node_id[r] = id;
         for (auto c : l) {
-            s_iv[i++] = (int)c; // store sequence
+            s_iv[i++] = dna3bit(c); // store sequence
         }
     }
     //node_label.clear();
@@ -116,23 +146,30 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     util::bit_compress(f_iv);
     util::bit_compress(t_iv);
 
+    rank_support_v<1> s_bv_rank(&s_bv);
+    bit_vector::select_1_type s_bv_select(&s_bv);
+    rank_support_v<1> f_bv_rank(&f_bv);
+    bit_vector::select_1_type f_bv_select(&f_bv);
+    rank_support_v<1> t_bv_rank(&t_bv);
+    bit_vector::select_1_type t_bv_select(&t_bv);
+
     // compressed vectors of the above
     vlc_vector<> s_civ(s_iv);
-    sd_vector<> s_cbv(s_bv);
-    sd_vector<>::rank_1_type s_cbv_rank(&s_cbv);
-    sd_vector<>::select_1_type s_cbv_select(&s_cbv);
+    rrr_vector<> s_cbv(s_bv);
+    rrr_vector<>::rank_1_type s_cbv_rank(&s_cbv);
+    rrr_vector<>::select_1_type s_cbv_select(&s_cbv);
 
-    vlc_vector<> i_civ(i_iv);
+    enc_vector<> i_civ(i_iv);
     
     vlc_vector<> f_civ(f_iv);
-    sd_vector<> f_cbv(f_bv);
-    sd_vector<>::rank_1_type f_cbv_rank(&f_cbv);
-    sd_vector<>::select_1_type f_cbv_select(&f_cbv);
+    rrr_vector<> f_cbv(f_bv);
+    rrr_vector<>::rank_1_type f_cbv_rank(&f_cbv);
+    rrr_vector<>::select_1_type f_cbv_select(&f_cbv);
     
     vlc_vector<> t_civ(t_iv);
-    sd_vector<> t_cbv(t_bv);
-    sd_vector<>::rank_1_type t_cbv_rank(&t_cbv);
-    sd_vector<>::select_1_type t_cbv_select(&t_cbv);
+    rrr_vector<> t_cbv(t_bv);
+    rrr_vector<>::rank_1_type t_cbv_rank(&t_cbv);
+    rrr_vector<>::select_1_type t_cbv_select(&t_cbv);
     //map<string, sd_vector<> > p_cbv;
 
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
@@ -182,7 +219,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         size_t end = rank == max_id ? s_cbv.size() : s_cbv_select(rank+1);
         string s; s.resize(end-start);
         for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
-            s[i-start] = s_civ[i];
+            s[i-start] = revdna3bit(s_civ[i]);
         }
         //cerr << id << " " << l << " =? " << s << endl;
         assert(l == s);
