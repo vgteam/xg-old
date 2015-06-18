@@ -146,19 +146,18 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     util::bit_compress(f_iv);
     util::bit_compress(t_iv);
 
-    rank_support_v<1> s_bv_rank(&s_bv);
-    bit_vector::select_1_type s_bv_select(&s_bv);
-    rank_support_v<1> f_bv_rank(&f_bv);
-    bit_vector::select_1_type f_bv_select(&f_bv);
-    rank_support_v<1> t_bv_rank(&t_bv);
-    bit_vector::select_1_type t_bv_select(&t_bv);
-
+    util::assign(s_bv_rank, rank_support_v<1>(&s_bv));
+    util::assign(s_bv_select, bit_vector::select_1_type(&s_bv));
+    util::assign(f_bv_rank, rank_support_v<1>(&f_bv));
+    util::assign(f_bv_select, bit_vector::select_1_type(&f_bv));
+    util::assign(t_bv_rank, rank_support_v<1>(&t_bv));
+    util::assign(t_bv_select, bit_vector::select_1_type(&t_bv));
     
     // compressed vectors of the above
     //vlc_vector<> s_civ(s_iv);
-    rrr_vector<> s_cbv(s_bv);
-    rrr_vector<>::rank_1_type s_cbv_rank(&s_cbv);
-    rrr_vector<>::select_1_type s_cbv_select(&s_cbv);
+    util::assign(s_cbv, rrr_vector<>(s_bv));
+    util::assign(s_cbv_rank, rrr_vector<>::rank_1_type(&s_cbv));
+    util::assign(s_cbv_select, rrr_vector<>::select_1_type(&s_cbv));
 
     /*
     vlc_vector<> f_civ(f_iv);
@@ -175,7 +174,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     
     
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
-    cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
+    //cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
     cerr << "|t_iv| = " << size_in_mega_bytes(t_iv) << endl;
 
@@ -193,6 +192,17 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     //cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
     //cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
 
+    cerr << "total size [MB] = " << (
+        size_in_mega_bytes(s_iv)
+        + size_in_mega_bytes(f_iv)
+        + size_in_mega_bytes(t_iv)
+        + size_in_mega_bytes(s_bv)
+        + size_in_mega_bytes(f_bv)
+        + size_in_mega_bytes(t_bv)
+        + size_in_mega_bytes(i_civ)
+        + size_in_mega_bytes(i_wt)
+        + size_in_mega_bytes(s_cbv)) << endl;
+    
     //cerr << s_civ << endl;
     /*
     for (int i = 0; i < s_civ.size(); ++i) {

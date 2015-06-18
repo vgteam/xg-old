@@ -48,14 +48,23 @@ private:
     // rank_1(i) = id
     // select_1(id) = i
     bit_vector s_bv; // node positions in siv
+    rank_support_v<1> s_bv_rank;
+    bit_vector::select_1_type s_bv_select;
+    rrr_vector<> s_cbv;
+    rrr_vector<>::rank_1_type s_cbv_rank;
+    rrr_vector<>::select_1_type s_cbv_select;
     // maintain old ids from input, ranked as in s_iv and s_bv
     int_vector<> i_iv;
     // maintain forward links
     int_vector<> f_iv;
     bit_vector f_bv;
+    rank_support_v<1> f_bv_rank;
+    bit_vector::select_1_type f_bv_select;
     // and the same data in the reverse direction
     int_vector<> t_iv;
     bit_vector t_bv;
+    rank_support_v<1> t_bv_rank;
+    bit_vector::select_1_type t_bv_select;
     map<string, bit_vector> p_bv;
 
 };
