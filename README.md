@@ -1,5 +1,7 @@
 # succinct graphs
 
+[![Build Status](https://travis-ci.org/ekg/succinct-graph.svg)](https://travis-ci.org/ekg/succinct-graph)
+
 ## challenge
 
 `vg`'s current graph memory model is weak and extremely bloated. It relies on fixed-width 64-bit integer ids and large hash tables mapping these to other entities. This makes it difficult to store in memory, and a general-purpose key-value store (rocksdb) is used to allow low-memory access to the entire graph. Although this design has some advantages, querying the graph requires costly IO operations, and thus use must be managed carefully when developing high-performance applications.
