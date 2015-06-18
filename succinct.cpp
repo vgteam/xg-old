@@ -34,11 +34,27 @@ char revdna3bit(int i) {
 }
 
 SuccinctGraph::SuccinctGraph(istream& in) {
-    //, size_t seq_length, size_t node_count, size_t edge_count) {
-    // allocate space for construction
-    seq_length=0; node_count=0; edge_count=0; path_entry_count=0;
+
+    // temporaries for construction
+    map<int64_t, string> node_label;
+    map<int64_t, set<int64_t> > from_to;
+    map<int64_t, set<int64_t> > to_from;
+    map<string, set<int64_t> > path_nodes;
+    size_t seq_length = 0;
+    size_t node_count = 0;
+    size_t edge_count = 0;
+    size_t path_entry_count = 0;
+    
     // we can always resize smaller, but not easily extend
-    function<void(Graph&)> lambda = [this](Graph& graph) {
+    function<void(Graph&)> lambda = [this,
+                                     &node_label,
+                                     &from_to,
+                                     &to_from,
+                                     &path_nodes,
+                                     &seq_length,
+                                     &node_count,
+                                     &edge_count,
+                                     &path_entry_count](Graph& graph) {
         for (int i = 0; i < graph.node_size(); ++i) {
             const Node& n = graph.node(i);
             if (node_label.find(n.id()) == node_label.end()) {
@@ -178,7 +194,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
     cerr << "|t_iv| = " << size_in_mega_bytes(t_iv) << endl;
 
-    cerr << "|s_bv| = " << size_in_mega_bytes(s_bv) << endl;
+    //cerr << "|s_bv| = " << size_in_mega_bytes(s_bv) << endl;
     cerr << "|f_bv| = " << size_in_mega_bytes(f_bv) << endl;
     cerr << "|t_bv| = " << size_in_mega_bytes(t_bv) << endl;
 
@@ -196,7 +212,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         size_in_mega_bytes(s_iv)
         + size_in_mega_bytes(f_iv)
         + size_in_mega_bytes(t_iv)
-        + size_in_mega_bytes(s_bv)
+        //+ size_in_mega_bytes(s_bv)
         + size_in_mega_bytes(f_bv)
         + size_in_mega_bytes(t_bv)
         + size_in_mega_bytes(i_civ)
@@ -216,6 +232,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     cerr << i_civ << endl;
     */
 
+    cerr << "validating graph sequence" << endl;
     int max_id = s_cbv_rank(s_cbv.size());
     for (auto& p : node_label) {
         int64_t id = p.first;
@@ -237,7 +254,9 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         //cerr << id << " " << l << " =? " << s << endl;
         assert(l == s);
     }
+    node_label.clear();
 
+    cerr << "validating forward edge table" << endl;
     // todo, why -1?
     for (size_t j = 0; j < f_iv.size()-1; ++j) {
         //cerr << j << endl;
@@ -249,7 +268,8 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         //cerr << fid << " " << tid << endl;
         assert(from_to[fid].count(tid));
     }
-    
+
+    cerr << "validating reverse edge table" << endl;
     for (size_t j = 0; j < t_iv.size()-1; ++j) {
         //cerr << j << endl;
         if (t_bv[j] == 1) continue;

@@ -23,25 +23,15 @@ public:
     ~SuccinctGraph(void) { }
     SuccinctGraph(istream& file);
     // build up interface here
-    void add_node(Node& node);
-    void add_edge(Edge& edge);
-    Node node(int64_t rank); // id?
-    Edge edge(int64_t rank);
+    Node node(int64_t id); // gets node sequence
+    string& node_sequence(int64_t id);
+    Edge edges_to(int64_t id);
+    Edge edges_from(int64_t id);
     Path path(string& name);
     Graph neighborhood(int64_t rank, int32_t steps);
     Graph range(int64_t rank1, int64_t rank2);
     Graph region(string& path_name, int64_t start, int64_t stop);
 private:
-    // for construction
-    map<int64_t, string> node_label;
-    map<int64_t, set<int64_t> > from_to;
-    map<int64_t, set<int64_t> > to_from;
-    map<string, set<int64_t> > path_nodes;
-    size_t seq_length;
-    size_t node_count;
-    size_t edge_count;
-    size_t path_entry_count;
-    
     // sequence/integer vector
     int_vector<> s_iv;
     // node starts in sequence, provides id schema
