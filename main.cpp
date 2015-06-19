@@ -16,7 +16,9 @@ void help_main(char** argv) {
          << "Compressed graph, emits on stdout." << endl
          << endl
          << "options:" << endl
-         << "    -h, --help     This text" << endl;
+         << "    -v, --vg FILE   compress graph in vg file" << endl
+         << "    -o, --out FILE  serialize graph to file" << endl
+         << "    -h, --help      This text" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -26,17 +28,22 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    string vg_name;
+    string out_name;
+
     int c;
     optind = 1; // force optind past command positional argument
     while (true) {
         static struct option long_options[] =
             {
                 {"help", no_argument, 0, 'h'},
+                {"vg", required_argument, 0, 'v'},
+                {"out", required_argument, 0, 'o'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "h",
+        c = getopt_long (argc, argv, "hv:o:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -45,6 +52,14 @@ int main(int argc, char** argv) {
 
         switch (c)
         {
+
+        case 'v':
+            vg_name = optarg;
+            break;
+
+        case 'o':
+            out_name = optarg;
+            break;
 
         case 'h':
         case '?':
@@ -58,16 +73,30 @@ int main(int argc, char** argv) {
     }
 
     SuccinctGraph* graph;
-    string file_name = argv[optind];
-    if (file_name == "-") {
-        graph = new SuccinctGraph(std::cin);
+    //string file_name = argv[optind];
+    assert(!vg_name.empty());
+    if (vg_name == "-") {
+        graph = new SuccinctGraph;
+        graph->from_vg(std::cin);
     } else {
         ifstream in;
-        in.open(file_name.c_str());
-        graph = new SuccinctGraph(in);
+        in.open(vg_name.c_str());
+        graph = new SuccinctGraph;
+        graph->from_vg(in);
     }
 
-    //graph->serialize_to_ostream(std::cout);
+
+    if (out_name.size()) {
+        if (out_name == "-") {
+            graph->serialize(std::cout);
+            std::cout.flush();
+        } else {
+            ofstream out;
+            out.open(out_name.c_str());
+            graph->serialize(out);
+            out.flush();
+        }
+    }
 
     // fail...
     //delete graph;

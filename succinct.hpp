@@ -10,6 +10,8 @@
 #include "sdsl/dac_vector.hpp"
 #include "sdsl/vlc_vector.hpp"
 #include "sdsl/wavelet_trees.hpp"
+#include "sdsl/csa_wt.hpp"
+
 
 namespace scg {
 
@@ -21,7 +23,10 @@ class SuccinctGraph {
 public:
     SuccinctGraph(void) { }
     ~SuccinctGraph(void) { }
-    SuccinctGraph(istream& file);
+    SuccinctGraph(istream& in);
+    void from_vg(istream& in);
+    void load(istream& in);
+    size_t serialize(ostream& out);
     // build up interface here
     Node node(int64_t id); // gets node sequence
     string& node_sequence(int64_t id);
@@ -56,7 +61,11 @@ private:
     rank_support_v<1> t_bv_rank;
     bit_vector::select_1_type t_bv_select;
     map<string, bit_vector> p_bv;
-
+    // allows lookups of id->rank mapping
+    wt_int<> i_wt;
+    // allows constant time determination of node adjacency
+    int_vector<> e_iv;
+    //csa_wt<> e_csa;
 };
 
 }

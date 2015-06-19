@@ -34,6 +34,50 @@ char revdna3bit(int i) {
 }
 
 SuccinctGraph::SuccinctGraph(istream& in) {
+    load(in);
+}
+
+void SuccinctGraph::load(istream& in) {
+
+    s_iv.load(in);
+    f_iv.load(in);
+    t_iv.load(in);
+
+    s_bv_rank.load(in);
+    s_bv_select.load(in);
+    f_bv_rank.load(in);
+    f_bv_select.load(in);
+    t_bv_rank.load(in);
+    t_bv_select.load(in);
+    
+    s_cbv.load(in);
+    s_cbv_rank.load(in);
+    s_cbv_select.load(in);
+
+}
+
+size_t SuccinctGraph::serialize(ostream& out) {
+    size_t written = 0;
+
+    written += s_iv.serialize(out);
+    written += f_iv.serialize(out);
+    written += t_iv.serialize(out);
+
+    written += s_bv_rank.serialize(out);
+    written += s_bv_select.serialize(out);
+    written += f_bv_rank.serialize(out);
+    written += f_bv_select.serialize(out);
+    written += t_bv_rank.serialize(out);
+    written += t_bv_select.serialize(out);
+    
+    written += s_cbv.serialize(out);
+    written += s_cbv_rank.serialize(out);
+    written += s_cbv_select.serialize(out);
+
+    return written;
+}
+
+void SuccinctGraph::from_vg(istream& in) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -119,9 +163,8 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
     util::bit_compress(i_iv);
     enc_vector<> i_civ(i_iv);
-    wt_int<> i_wt;
     construct_im(i_wt, i_iv);
-
+    
     size_t f_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
         //cerr << k << endl;
@@ -141,7 +184,7 @@ SuccinctGraph::SuccinctGraph(istream& in) {
     }
 
     size_t t_itr = 0;
-    for (size_t k = 0; k < i_iv.size(); ++k) {
+    for (size_t k = 0; k < node_count; ++k) {
         int64_t t_id = i_iv[k];
         size_t t_rank = k+1;
         t_iv[t_itr] = t_rank;
@@ -157,10 +200,23 @@ SuccinctGraph::SuccinctGraph(istream& in) {
         }
     }
 
+
+    /*
+    csa_wt<wt_int<rrr_vector<63>>> csa;
+    int_vector<> x = {1,8,15,23,1,8,23,11,8};
+    construct_im(csa, x, 8);
+    cout << " i SA ISA PSI LF BWT   T[SA[i]..SA[i]-1]" << endl;
+    csXprintf(cout, "%2I %2S %3s %3P %2p %3B   %:3T", csa);
+    */
+    
+
     // to label the paths we'll need to compress and index our vectors
     util::bit_compress(s_iv);
     util::bit_compress(f_iv);
     util::bit_compress(t_iv);
+    //util::bit_compress(e_iv);
+
+    //construct_im(e_csa, e_iv, 8);
 
     util::assign(s_bv_rank, rank_support_v<1>(&s_bv));
     util::assign(s_bv_select, bit_vector::select_1_type(&s_bv));
