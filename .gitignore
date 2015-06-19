@@ -2,5 +2,4 @@
 succinctg
 *.o
 cpp
-*.vg
 .Rhistory

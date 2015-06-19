@@ -63,8 +63,10 @@ private:
     map<string, bit_vector> p_bv;
     // allows lookups of id->rank mapping
     wt_int<> i_wt;
-    // allows constant time determination of node adjacency
-    int_vector<> e_iv;
+    // paths serialized as bitvectors over nodes and edges
+    vector<string> path_names;
+    vector<bit_vector> paths;
+    vector<int_vector<> > path_positions; // relative positions of each element in each path
     //csa_wt<> e_csa;
 };
 

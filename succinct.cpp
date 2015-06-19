@@ -83,7 +83,7 @@ void SuccinctGraph::from_vg(istream& in) {
     map<int64_t, string> node_label;
     map<int64_t, set<int64_t> > from_to;
     map<int64_t, set<int64_t> > to_from;
-    map<string, set<int64_t> > path_nodes;
+    map<string, vector<int64_t> > path_nodes;
     size_t seq_length = 0;
     size_t node_count = 0;
     size_t edge_count = 0;
@@ -120,7 +120,7 @@ void SuccinctGraph::from_vg(istream& in) {
             const string& name = p.name();
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
-                path_nodes[name].insert(m.position().node_id());
+                path_nodes[name].push_back(m.position().node_id());
                 ++path_entry_count;
             }
         }
@@ -318,7 +318,7 @@ void SuccinctGraph::from_vg(istream& in) {
         } else {
             int j = 0;
             for (auto c : l) {
-                if (c != s[j++]) {
+                if (dna3bit(c) != dna3bit(s[j++])) {
                     cerr << l << " != " << endl << s << endl << " for node " << id << endl;
                     assert(false);
                 }
