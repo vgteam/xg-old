@@ -299,7 +299,10 @@ void SuccinctGraph::from_vg(istream& in) {
         // find the node in the array
         //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
         // this should be true given how we constructed things
-        assert(rank == s_cbv_rank(s_cbv_select(rank)+1));
+        if (rank != s_cbv_rank(s_cbv_select(rank)+1)) {
+            cerr << rank << " != " << s_cbv_rank(s_cbv_select(rank)+1) << " for node " << id << endl;
+            assert(false);
+        }
         // get the sequence from the s_iv
         size_t start = s_cbv_select(rank);
         size_t end = rank == max_id ? s_cbv.size() : s_cbv_select(rank+1);
@@ -308,7 +311,10 @@ void SuccinctGraph::from_vg(istream& in) {
             s[i-start] = revdna3bit(s_iv[i]);
         }
         //cerr << id << " " << l << " =? " << s << endl;
-        assert(l == s);
+        if (l != s) {
+            cerr << l << " != " << endl << s << endl << " for node " << id << endl;
+            assert(false);
+        }
     }
     node_label.clear();
 
@@ -322,7 +328,10 @@ void SuccinctGraph::from_vg(istream& in) {
         // to id == f_cbv[j]
         size_t tid = i_civ[f_iv[j]-1];
         //cerr << fid << " " << tid << endl;
-        assert(from_to[fid].count(tid));
+        if (from_to[fid].count(tid) == 0) {
+            cerr << "could not find edge (f) " << fid << " -> " << tid << endl;
+            assert(false);
+        }
     }
 
     cerr << "validating reverse edge table" << endl;
@@ -334,7 +343,10 @@ void SuccinctGraph::from_vg(istream& in) {
         // to id == f_cbv[j]
         size_t fid = i_civ[t_iv[j]-1];
         //cerr << tid << " " << fid << endl;
-        assert(to_from[tid].count(fid));
+        if (to_from[tid].count(fid) == 0) {
+            cerr << "could not find edge (t) " << fid << " -> " << tid << endl;
+            assert(false);
+        }
     }
 
     cerr << "graph ok" << endl;

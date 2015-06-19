@@ -30,7 +30,7 @@ cpp/vg.pb.h: vg.proto $(LIBPROTOBUF)
 cpp/vg.pb.o: cpp/vg.pb.h cpp/vg.pb.cc
 	$(CXX) $(CXXFLAGS) -c -o cpp/vg.pb.o cpp/vg.pb.cc $(INCLUDES)
 
-main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h
+main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h succinct.hpp 
 	$(CXX) $(CXXFLAGS) -c -o main.o main.cpp $(INCLUDES)
 
 succinct.o: succinct.cpp succinct.hpp $(LIBSDSL) cpp/vg.pb.h
@@ -44,6 +44,9 @@ get-deps:
 
 test:
 	cd test && make
+
+clean-succinctg:
+	rm -f *.o succinctg
 
 clean:
 	rm -rf cpp
