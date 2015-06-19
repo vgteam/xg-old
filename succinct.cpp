@@ -310,10 +310,19 @@ void SuccinctGraph::from_vg(istream& in) {
         for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
             s[i-start] = revdna3bit(s_iv[i]);
         }
-        //cerr << id << " " << l << " =? " << s << endl;
-        if (l != s) {
+        string ltmp, stmp;
+
+        if (l.size() != s.size()) {
             cerr << l << " != " << endl << s << endl << " for node " << id << endl;
             assert(false);
+        } else {
+            int j = 0;
+            for (auto c : l) {
+                if (c != s[j++]) {
+                    cerr << l << " != " << endl << s << endl << " for node " << id << endl;
+                    assert(false);
+                }
+            }
         }
     }
     node_label.clear();
