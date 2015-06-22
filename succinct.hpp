@@ -26,7 +26,7 @@ public:
     SuccinctGraph(istream& in);
     void from_vg(istream& in);
     void load(istream& in);
-    size_t serialize(ostream& out);
+    size_t serialize(std::ostream& out, sdsl::structure_tree_node* v = NULL, std::string name = "");
     // build up interface here
     size_t id_to_rank(int64_t id);
     int64_t rank_to_id(size_t rank);

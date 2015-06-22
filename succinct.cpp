@@ -39,42 +39,67 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
 void SuccinctGraph::load(istream& in) {
 
-    s_iv.load(in);
-    f_iv.load(in);
-    t_iv.load(in);
-
-    s_bv_rank.load(in);
-    s_bv_select.load(in);
-    f_bv_rank.load(in);
-    f_bv_select.load(in);
-    t_bv_rank.load(in);
-    t_bv_select.load(in);
+    size_t sequence_length;
+    size_t node_count;
+    size_t edge_count;
     
-    s_cbv.load(in);
-    s_cbv_rank.load(in);
-    s_cbv_select.load(in);
+    sdsl::read_member(sequence_length, in);
+    sdsl::read_member(node_count, in);
+    sdsl::read_member(edge_count, in);
+    size_t entity_count = node_count + edge_count;
+    //cerr << sequence_length << ", " << node_count << ", " << edge_count << endl;
 
+    i_iv.load(in);
+    i_wt.load(in);
+
+    s_iv.load(in);
+    s_cbv.load(in);
+    s_cbv_rank.load(in, &s_cbv);
+    s_cbv_select.load(in, &s_cbv);
+
+    f_iv.load(in);
+    f_bv.load(in);
+    f_bv_rank.load(in, &f_bv);
+    f_bv_select.load(in, &f_bv);
+
+    t_iv.load(in);
+    t_bv.load(in);
+    t_bv_rank.load(in, &t_bv);
+    t_bv_select.load(in, &t_bv);
+    
 }
 
-size_t SuccinctGraph::serialize(ostream& out) {
+size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std::string name) {
+
+    sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(s, name, sdsl::util::class_name(*this));
     size_t written = 0;
 
-    written += s_iv.serialize(out);
-    written += f_iv.serialize(out);
-    written += t_iv.serialize(out);
+    written += sdsl::write_member(s_iv.size(), out, child, "sequence_length");
+    written += sdsl::write_member(i_iv.size(), out, child, "node_count");
+    written += sdsl::write_member(f_iv.size()-i_iv.size(), out, child, "edge_count");
+    //written += sdsl::write_member(path_count, out, child, "path_count");
 
-    written += s_bv_rank.serialize(out);
-    written += s_bv_select.serialize(out);
-    written += f_bv_rank.serialize(out);
-    written += f_bv_select.serialize(out);
-    written += t_bv_rank.serialize(out);
-    written += t_bv_select.serialize(out);
+    written += i_iv.serialize(out, child, "id_vector");
+    written += i_wt.serialize(out, child, "id_wavelet_tree");
+
+    written += s_iv.serialize(out, child, "seq_vector");
+    written += s_cbv.serialize(out, child, "seq_node_starts");
+    written += s_cbv_rank.serialize(out, child, "seq_node_starts_rank");
+    written += s_cbv_select.serialize(out, child, "seq_node_starts_select");
+
+    written += f_iv.serialize(out, child, "from_vector");
+    written += f_bv.serialize(out, child, "from_node_starts");
+    written += f_bv_rank.serialize(out, child, "from_node_starts_rank");
+    written += f_bv_select.serialize(out, child, "from_node_starts_select");
     
-    written += s_cbv.serialize(out);
-    written += s_cbv_rank.serialize(out);
-    written += s_cbv_select.serialize(out);
+    written += t_iv.serialize(out, child, "to_vector");
+    written += t_bv.serialize(out, child, "to_node_starts");
+    written += t_bv_rank.serialize(out, child, "to_node_starts_rank");
+    written += t_bv_select.serialize(out, child, "to_node_starts_select");
 
+    sdsl::structure_tree::add_size(child, written);
     return written;
+    
 }
 
 void SuccinctGraph::from_vg(istream& in) {
