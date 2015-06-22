@@ -16,7 +16,7 @@ all: $(EXECUTABLE)
 
 doc: README.md
 	pandoc -o README.html -s README.md
-	pandoc -o README.pdf README.md
+#	pandoc -o README.pdf README.md
 
 $(LIBPROTOBUF):
 	cd $(STREAM) && $(MAKE)
