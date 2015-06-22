@@ -28,10 +28,13 @@ public:
     void load(istream& in);
     size_t serialize(ostream& out);
     // build up interface here
+    size_t id_to_rank(int64_t id);
+    int64_t rank_to_id(size_t rank);
+    int64_t max_rank(void);
     Node node(int64_t id); // gets node sequence
-    string& node_sequence(int64_t id);
-    Edge edges_to(int64_t id);
-    Edge edges_from(int64_t id);
+    string node_sequence(int64_t id);
+    vector<Edge> edges_to(int64_t id);
+    vector<Edge> edges_from(int64_t id);
     Path path(string& name);
     Graph neighborhood(int64_t rank, int32_t steps);
     Graph range(int64_t rank1, int64_t rank2);

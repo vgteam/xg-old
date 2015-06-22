@@ -244,7 +244,6 @@ void SuccinctGraph::from_vg(istream& in) {
     */
     //map<string, sd_vector<> > p_cbv;
     
-    
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
     //cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
@@ -294,7 +293,7 @@ void SuccinctGraph::from_vg(istream& in) {
         int64_t id = p.first;
         const string& l = p.second;
         //size_t rank = node_rank[id];
-        size_t rank = i_wt.select(1, id)+1;
+        size_t rank = id_to_rank(id);
         //cerr << rank << endl;
         // find the node in the array
         //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
@@ -304,14 +303,9 @@ void SuccinctGraph::from_vg(istream& in) {
             assert(false);
         }
         // get the sequence from the s_iv
-        size_t start = s_cbv_select(rank);
-        size_t end = rank == max_id ? s_cbv.size() : s_cbv_select(rank+1);
-        string s; s.resize(end-start);
-        for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
-            s[i-start] = revdna3bit(s_iv[i]);
-        }
-        string ltmp, stmp;
+        string s = node_sequence(id);
 
+        string ltmp, stmp;
         if (l.size() != s.size()) {
             cerr << l << " != " << endl << s << endl << " for node " << id << endl;
             assert(false);
@@ -360,7 +354,75 @@ void SuccinctGraph::from_vg(istream& in) {
 
     cerr << "graph ok" << endl;
 
-
 }
+
+Node SuccinctGraph::node(int64_t id) {
+    Node n;
+    n.set_id(id);
+    n.set_sequence(node_sequence(id));
+    return n;
+}
+
+string SuccinctGraph::node_sequence(int64_t id) {
+    size_t rank = id_to_rank(id);
+    size_t start = s_cbv_select(rank);
+    size_t end = rank == max_rank() ? s_cbv.size() : s_cbv_select(rank+1);
+    string s; s.resize(end-start);
+    for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
+        s[i-start] = revdna3bit(s_iv[i]);
+    }
+    return s;
+}
+
+size_t SuccinctGraph::id_to_rank(int64_t id) {
+    return i_wt.select(1, id)+1;
+}
+
+int64_t SuccinctGraph::rank_to_id(size_t rank) {
+    return i_iv[rank];
+}
+
+vector<Edge> SuccinctGraph::edges_to(int64_t id) {
+    size_t rank = id_to_rank(id);
+    size_t t_start = t_bv_select(rank);
+    size_t t_end = t_bv_select(rank+1);
+    vector<Edge> edges;
+    for (size_t i = t_start; i < t_end; ++i) {
+        Edge edge;
+        edge.set_from(rank_to_id(t_iv[i]));
+        edge.set_to(id);
+        edges.push_back(edge);
+    }
+    return edges;
+}
+
+vector<Edge> SuccinctGraph::edges_from(int64_t id) {
+    size_t rank = id_to_rank(id);
+    size_t f_start = f_bv_select(rank);
+    size_t f_end = f_bv_select(rank+1);
+    vector<Edge> edges;
+    for (size_t i = f_start; i < f_end; ++i) {
+        Edge edge;
+        edge.set_from(id);
+        edge.set_to(rank_to_id(f_iv[i]));
+        edges.push_back(edge);
+    }
+    return edges;
+}
+
+int64_t SuccinctGraph::max_rank(void) {
+    return s_cbv_rank(s_cbv.size());
+}
+
+/*
+Path SuccinctGraph::path(string& name) {
+}
+Graph SuccinctGraph::neighborhood(int64_t rank, int32_t steps) {
+}
+Graph SuccinctGraph::range(int64_t rank1, int64_t rank2) {
+}
+Graph SuccinctGraph::region(string& path_name, int64_t start, int64_t stop) {
+}
+*/
 
 }

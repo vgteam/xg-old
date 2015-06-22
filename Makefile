@@ -9,6 +9,7 @@ STREAM=stream
 PROTOBUF=$(STREAM)/protobuf
 LIBPROTOBUF=stream/protobuf/libprotobuf.a
 LIBSDSL=sdsl-lite/build/lib/libsdsl.a
+CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
 EXECUTABLE=succinctg
 
 all: $(EXECUTABLE)
@@ -20,8 +21,9 @@ doc: README.md
 $(LIBPROTOBUF):
 	cd $(STREAM) && $(MAKE)
 
-$(LIBSDSL):
-	cd sdsl-lite/build && cmake .. -Wno-dev && $(MAKE)
+$(LIBSDSL): $(CMAKE_BIN)
+	PATH=cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH} cmake --version
+	cd sdsl-lite/build && PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH} cmake .. -Wno-dev && $(MAKE)
 
 cpp/vg.pb.cc: cpp/vg.pb.h
 cpp/vg.pb.h: vg.proto $(LIBPROTOBUF)
@@ -39,8 +41,12 @@ succinct.o: succinct.cpp succinct.hpp $(LIBSDSL) cpp/vg.pb.h
 $(EXECUTABLE): $(LIBS)
 	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDFLAGS)
 
-get-deps:
-	echo todo
+$(CMAKE_BIN):
+	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+	tar xzvf cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+
+get-deps: $(CMAKE_BIN)
+
 
 test:
 	cd test && make
@@ -54,3 +60,4 @@ clean:
 	rm -f *.o
 	rm $(LIBPROTOBUF)
 	cd $(PROTOBUF) && $(MAKE) clean && rm -rf build
+	rm -rf cmake-3.3.0-rc2-Linux-x86_64.tar.gz cmake-3.3.0-rc2-Linux-x86_64
