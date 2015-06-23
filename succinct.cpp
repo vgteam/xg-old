@@ -378,8 +378,24 @@ void SuccinctGraph::from_vg(istream& in) {
     //cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
     //cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
 
-    // todo paths
-
+    long double paths_mb_size = 0;
+    cerr << "|pn_iv| = " << size_in_mega_bytes(pn_iv) << endl;
+    paths_mb_size += size_in_mega_bytes(pn_iv);
+    cerr << "|pn_csa| = " << size_in_mega_bytes(pn_csa) << endl;
+    paths_mb_size += size_in_mega_bytes(pn_csa);
+    cerr << "|pn_bv| = " << size_in_mega_bytes(pn_bv) << endl;
+    paths_mb_size += size_in_mega_bytes(pn_bv);
+    paths_mb_size += size_in_mega_bytes(pn_bv_rank);
+    paths_mb_size += size_in_mega_bytes(pn_bv_select);
+    paths_mb_size += size_in_mega_bytes(pi_iv);
+    for (auto& bv : pe_v) {
+        paths_mb_size += size_in_mega_bytes(bv);
+    }
+    for (auto& iv : pp_v) {
+        paths_mb_size += size_in_mega_bytes(iv);
+    }
+    cerr << "total paths size " << paths_mb_size << endl;
+    
     cerr << "total size [MB] = " << (
         size_in_mega_bytes(s_iv)
         + size_in_mega_bytes(f_iv)
@@ -389,7 +405,9 @@ void SuccinctGraph::from_vg(istream& in) {
         + size_in_mega_bytes(t_bv)
         + size_in_mega_bytes(i_civ)
         + size_in_mega_bytes(i_wt)
-        + size_in_mega_bytes(s_cbv)) << endl;
+        + size_in_mega_bytes(s_cbv)
+        + paths_mb_size
+        ) << endl;
     
     //cerr << s_civ << endl;
     /*
