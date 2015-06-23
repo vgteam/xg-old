@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=..:$PATH # for succinctg
 
-plan tests 8
+plan tests 9
 
 is $(succinctg -v data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(succinctg -v data/l+.vg 2>&1 | grep ok | wc -l) 1 "node ids need not start at 1"
@@ -22,3 +22,6 @@ is $(succinctg -i z.idx -f 10331 | md5sum | awk '{print $1}') "91e7cfdbeee58e6fb
 is $(succinctg -i z.idx -t 10331 | md5sum | awk '{print $1}') "6fafb73d8559760040253bc036ad0b41" "graph can be queried to get to nodes"
 
 rm -f z.idx
+
+cat data/ll.vg data/z.vg | succinctg -v - 2>/dev/null
+is $? 0 "graphs can be constructed with multiple paths"
