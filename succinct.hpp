@@ -42,6 +42,7 @@ public:
     Path path(const string& name);
     size_t path_rank(const string& name);
     string path_name(size_t rank);
+    bool has_edge(int64_t id1, int64_t id2);
     Graph neighborhood(int64_t rank, int32_t steps);
     Graph range(int64_t rank1, int64_t rank2);
     Graph region(string& path_name, int64_t start, int64_t stop);
@@ -70,6 +71,10 @@ private:
     bit_vector t_bv;
     rank_support_v<1> t_bv_rank;
     bit_vector::select_1_type t_bv_select;
+    // edge table, allows o(1) determination of edge existence
+    int_vector<> e_iv;
+    //csa_wt<> e_csa;
+    csa_sada<> e_csa;
     // allows lookups of id->rank mapping
     wt_int<> i_wt;
     // paths: serialized as bitvectors over nodes and edges
@@ -83,9 +88,9 @@ private:
     vector<int_vector<>> pp_v; // path relative positions to each entity
     // entity/path mapping
     // but is over the entire entity space
-    int_vector<> ep_iv; // list of path ids for each entity
-    bit_vector ep_bv; // entity starts in ep vector
-    wt_int<> ep_wt; // allows quick lookup of all entities in a particular path
+    int_vector<> pe_iv; // list of path ids for each entity
+    bit_vector pe_bv; // entity starts in ep vector
+    wt_int<> pe_wt; // allows quick lookup of all entities in a particular path
 };
 
 }

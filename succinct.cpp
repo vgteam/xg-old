@@ -194,6 +194,7 @@ void SuccinctGraph::from_vg(istream& in) {
     util::assign(f_bv, bit_vector(entity_count));
     util::assign(t_iv, int_vector<>(entity_count));
     util::assign(t_bv, bit_vector(entity_count));
+    //util::assign(e_iv, int_vector<>(edge_count*3));
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
@@ -219,8 +220,9 @@ void SuccinctGraph::from_vg(istream& in) {
     enc_vector<> i_civ(i_iv);
     construct_im(i_wt, i_iv);
 
-    cerr << "storing forward edges" << endl;
+    cerr << "storing forward edges and adjacency table" << endl;
     size_t f_itr = 0;
+    size_t j_itr = 0; // edge adjacency pointer
     for (size_t k = 0; k < node_count; ++k) {
         //cerr << k << endl;
         int64_t f_id = i_iv[k];
@@ -229,14 +231,20 @@ void SuccinctGraph::from_vg(istream& in) {
         f_bv[f_itr] = 1;
         ++f_itr;
         if (from_to.find(f_id) != from_to.end()) {
+            //e_iv[j_itr++] = 1; // indicates adjacency record start
             for (auto& t_id : from_to[f_id]) {
                 size_t t_rank = i_wt.select(1, t_id)+1;
                 f_iv[f_itr] = t_rank;
                 f_bv[f_itr] = 0;
                 ++f_itr;
+                // store edge in adjacency index
+                //e_iv[j_itr++] = f_rank+1;
+                //e_iv[j_itr++] = t_rank+1;
             }
         }
     }
+    
+    //assert(e_iv.size() == edge_count*3);
 
     cerr << "storing reverse edges" << endl;
     size_t t_itr = 0;
@@ -263,7 +271,12 @@ void SuccinctGraph::from_vg(istream& in) {
     cout << " i SA ISA PSI LF BWT   T[SA[i]..SA[i]-1]" << endl;
     csXprintf(cout, "%2I %2S %3s %3P %2p %3B   %:3T", csa);
     */
-    
+    /*
+    cerr << "building csa of edges" << endl;
+    //string edges_file = "@edges.iv";
+    //store_to_file(e_iv, edges_file);
+    construct_im(e_csa, e_iv, 1);
+    */
 
     // to label the paths we'll need to compress and index our vectors
     util::bit_compress(s_iv);
@@ -320,9 +333,12 @@ void SuccinctGraph::from_vg(istream& in) {
             pp_iv[pp_off++] = path_off;
             path_off += node_label[node_id].size();
             // find the next edge in the path, and record it
-            if (i+1 < path.size()) { // if there is a next node
+            // (if there is a next node)
+            if (i+1 < path.size()) {
                 auto& next_node_id = path[i+1];
-                pe_bv[edge_rank_as_entity(node_id, next_node_id)] = 1;
+                if (has_edge(node_id, next_node_id)) {
+                    pe_bv[edge_rank_as_entity(node_id, next_node_id)] = 1;
+                }
             }
         }
         util::bit_compress(pp_iv);
@@ -570,11 +586,24 @@ size_t SuccinctGraph::node_rank_as_entity(int64_t id) {
     return f_bv_select(id_to_rank(id));
 }
 
+// snoop through the forward table to check if the edge exists
+bool SuccinctGraph::has_edge(int64_t id1, int64_t id2) {
+    size_t rank1 = id_to_rank(id1);
+    size_t rank2 = id_to_rank(id2);
+    size_t f_start = f_bv_select(rank1);
+    size_t f_end = f_bv_select(rank1+1);
+    for (size_t i = f_start; i < f_end; ++i) {
+        if (rank2 == f_iv[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 size_t SuccinctGraph::edge_rank_as_entity(int64_t id1, int64_t id2) {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
     //cerr << "Finding rank for " << id1 << "(" << rank1 << ") " << " -> " << id2 << "(" << rank2 << ")"<< endl;
-    size_t erank = node_rank_as_entity(id1);
     size_t f_start = f_bv_select(rank1);
     size_t f_end = f_bv_select(rank1+1);
     //cerr << f_start << " to " << f_end << endl;
@@ -584,7 +613,7 @@ size_t SuccinctGraph::edge_rank_as_entity(int64_t id1, int64_t id2) {
             return i;
         }
     }
-    //cerr << "shoudn't get here" << endl;
+    cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
     assert(false);
 }
 
@@ -595,7 +624,7 @@ size_t SuccinctGraph::path_rank(const string& name) {
         cerr << "multiple hits for " << name << endl;
         assert(false);
     }
-    return occs[0];
+    return pn_bv_rank(occs[0]);
 }
 
 string SuccinctGraph::path_name(size_t rank) {
