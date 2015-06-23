@@ -41,6 +41,7 @@ public:
     size_t edge_rank_as_entity(int64_t id1, int64_t id2);
     Path path(const string& name);
     size_t path_rank(const string& name);
+    string path_name(size_t rank);
     Graph neighborhood(int64_t rank, int32_t steps);
     Graph range(int64_t rank1, int64_t rank2);
     Graph region(string& path_name, int64_t start, int64_t stop);
@@ -75,8 +76,9 @@ private:
     int_vector<> pn_iv; // path names
     csa_wt<> pn_csa; // path name compressed suffix array
     bit_vector pn_bv;  // path name starts in uncompressed version of csa
+    rank_support_v<1> pn_bv_rank;
+    bit_vector::select_1_type pn_bv_select;
     int_vector<> pi_iv; // path ids by rank in the path names
-    
     vector<bit_vector> pe_v; // path entity membership (ordered by rank in pn_iv
     vector<int_vector<>> pp_v; // path relative positions to each entity
     // entity/path mapping

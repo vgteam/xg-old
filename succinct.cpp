@@ -42,6 +42,7 @@ void SuccinctGraph::load(istream& in) {
     size_t sequence_length;
     size_t node_count;
     size_t edge_count;
+    size_t path_count;
     
     sdsl::read_member(sequence_length, in);
     sdsl::read_member(node_count, in);
@@ -66,7 +67,22 @@ void SuccinctGraph::load(istream& in) {
     t_bv.load(in);
     t_bv_rank.load(in, &t_bv);
     t_bv_select.load(in, &t_bv);
-    
+
+    pn_iv.load(in);
+    pn_csa.load(in);
+    pn_bv.load(in);
+    pn_bv_rank.load(in, &pn_bv);
+    pn_bv_select.load(in, &pn_bv);
+    pi_iv.load(in);
+    sdsl::read_member(path_count, in);
+    for (size_t i = 0; i < path_count; ++i) {
+        bit_vector bv;
+        bv.load(in);
+        pe_v.push_back(bv);
+        int_vector<> iv;
+        iv.load(in);
+        pp_v.push_back(iv);
+    }
 }
 
 size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std::string name) {
@@ -96,6 +112,18 @@ size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std:
     written += t_bv.serialize(out, child, "to_node_starts");
     written += t_bv_rank.serialize(out, child, "to_node_starts_rank");
     written += t_bv_select.serialize(out, child, "to_node_starts_select");
+
+    written += pn_iv.serialize(out, child, "path_names");
+    written += pn_csa.serialize(out, child, "path_names_csa");
+    written += pn_bv.serialize(out, child, "path_names_starts");
+    written += pn_bv_rank.serialize(out, child, "path_names_starts_rank");
+    written += pn_bv_select.serialize(out, child, "path_names_starts_select");
+    written += pi_iv.serialize(out, child, "path_ids");
+    written += sdsl::write_member(pe_v.size(), out, child, "path_count");    
+    for (size_t i = 0; i < pe_v.size(); ++i) {
+        written += pe_v[i].serialize(out, child, "path_membership_" + path_name(i+1));
+        written += pp_v[i].serialize(out, child, "path_positions_" + path_name(i+1));
+    }
 
     sdsl::structure_tree::add_size(child, written);
     return written;
@@ -310,6 +338,9 @@ void SuccinctGraph::from_vg(istream& in) {
             pn_bv[i] = 1; // register name start
         }
     }
+    util::assign(pn_bv_rank, rank_support_v<1>(&pn_bv));
+    util::assign(pn_bv_select, bit_vector::select_1_type(&pn_bv));
+    
     //util::bit_compress(pn_iv);
     string path_name_file = "@pathnames.iv";
     store_to_file((const char*)path_names.c_str(), path_name_file);
@@ -346,6 +377,8 @@ void SuccinctGraph::from_vg(istream& in) {
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
     //cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
     //cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
+
+    // todo paths
 
     cerr << "total size [MB] = " << (
         size_in_mega_bytes(s_iv)
@@ -438,9 +471,10 @@ void SuccinctGraph::from_vg(istream& in) {
 
     cerr << "validating paths" << endl;
     for (auto& pathpair : path_nodes) {
-        const string& path_name = pathpair.first;
+        const string& name = pathpair.first;
         const vector<int64_t>& path = pathpair.second;
-        size_t prank = path_rank(path_name);
+        size_t prank = path_rank(name);
+        assert(path_name(prank) == name);
         bit_vector& pe_bv = pe_v[prank-1];
         int_vector<>& pp_iv = pp_v[prank-1];
         // check each entity in the nodes is present
@@ -544,6 +578,16 @@ size_t SuccinctGraph::path_rank(const string& name) {
         assert(false);
     }
     return occs[0];
+}
+
+string SuccinctGraph::path_name(size_t rank) {
+    size_t start = pn_bv_select(rank)+1; // step past '#'
+    size_t end = (rank == pn_bv_rank(pn_bv.size()-1)) ? pn_bv.size() : pn_bv_select(rank+1);
+    string name; name.resize(end-start);
+    for (size_t i = start; i < end; ++i) {
+        name[i-start] = pn_iv[i];
+    }
+    return name;
 }
 
 /*
