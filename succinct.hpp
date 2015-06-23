@@ -10,7 +10,9 @@
 #include "sdsl/dac_vector.hpp"
 #include "sdsl/vlc_vector.hpp"
 #include "sdsl/wavelet_trees.hpp"
+//#include "sdsl/csa_bitcompressed.hpp"
 #include "sdsl/csa_wt.hpp"
+#include "sdsl/suffix_arrays.hpp"
 
 
 namespace scg {
@@ -21,7 +23,7 @@ using namespace vg;
 
 class SuccinctGraph {
 public:
-    SuccinctGraph(void) { }
+    SuccinctGraph(void) : path_name_marker('#') { }
     ~SuccinctGraph(void) { }
     SuccinctGraph(istream& in);
     void from_vg(istream& in);
@@ -35,10 +37,14 @@ public:
     string node_sequence(int64_t id);
     vector<Edge> edges_to(int64_t id);
     vector<Edge> edges_from(int64_t id);
-    Path path(string& name);
+    size_t node_rank_as_entity(int64_t id);
+    size_t edge_rank_as_entity(int64_t id1, int64_t id2);
+    Path path(const string& name);
+    size_t path_rank(const string& name);
     Graph neighborhood(int64_t rank, int32_t steps);
     Graph range(int64_t rank1, int64_t rank2);
     Graph region(string& path_name, int64_t start, int64_t stop);
+    char path_name_marker;
 private:
     // sequence/integer vector
     int_vector<> s_iv;
@@ -63,14 +69,21 @@ private:
     bit_vector t_bv;
     rank_support_v<1> t_bv_rank;
     bit_vector::select_1_type t_bv_select;
-    map<string, bit_vector> p_bv;
     // allows lookups of id->rank mapping
     wt_int<> i_wt;
-    // paths serialized as bitvectors over nodes and edges
-    vector<string> path_names;
-    vector<bit_vector> paths;
-    vector<int_vector<> > path_positions; // relative positions of each element in each path
-    //csa_wt<> e_csa;
+    // paths: serialized as bitvectors over nodes and edges
+    int_vector<> pn_iv; // path names
+    csa_wt<> pn_csa; // path name compressed suffix array
+    bit_vector pn_bv;  // path name starts in uncompressed version of csa
+    int_vector<> pi_iv; // path ids by rank in the path names
+    
+    vector<bit_vector> pe_v; // path entity membership (ordered by rank in pn_iv
+    vector<int_vector<>> pp_v; // path relative positions to each entity
+    // entity/path mapping
+    // but is over the entire entity space
+    int_vector<> ep_iv; // list of path ids for each entity
+    bit_vector ep_bv; // entity starts in ep vector
+    wt_int<> ep_wt; // allows quick lookup of all entities in a particular path
 };
 
 }

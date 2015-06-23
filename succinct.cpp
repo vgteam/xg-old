@@ -169,6 +169,7 @@ void SuccinctGraph::from_vg(istream& in) {
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
+    cerr << "storing node labels" << endl;
     size_t i = 0; // insertion point
     size_t r = 1;
     for (auto& p : node_label) {
@@ -189,7 +190,8 @@ void SuccinctGraph::from_vg(istream& in) {
     util::bit_compress(i_iv);
     enc_vector<> i_civ(i_iv);
     construct_im(i_wt, i_iv);
-    
+
+    cerr << "storing forward edges" << endl;
     size_t f_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
         //cerr << k << endl;
@@ -208,6 +210,7 @@ void SuccinctGraph::from_vg(istream& in) {
         }
     }
 
+    cerr << "storing reverse edges" << endl;
     size_t t_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
         int64_t t_id = i_iv[k];
@@ -224,7 +227,6 @@ void SuccinctGraph::from_vg(istream& in) {
             }
         }
     }
-
 
     /*
     csa_wt<wt_int<rrr_vector<63>>> csa;
@@ -256,6 +258,63 @@ void SuccinctGraph::from_vg(istream& in) {
     util::assign(s_cbv_rank, rrr_vector<>::rank_1_type(&s_cbv));
     util::assign(s_cbv_select, rrr_vector<>::select_1_type(&s_cbv));
 
+
+    cerr << "storing paths" << endl;
+    // paths
+    //path_nodes[name].push_back(m.position().node_id());
+    string path_names;
+    for (auto& pathpair : path_nodes) {
+        // add path name
+        const string& path_name = pathpair.first;
+        //cerr << path_name << endl;
+        const vector<int64_t>& path = pathpair.second;
+        path_names += path_name_marker + path_name;
+        pe_v.emplace_back();
+        // path members (of nodes and edges ordered as per f_bv)
+        bit_vector& pe_bv = pe_v.back();
+        util::assign(pe_bv, bit_vector(entity_count));
+        // TODO resize
+        pp_v.emplace_back();
+        // node positions in path
+        int_vector<>& pp_iv = pp_v.back();
+        util::assign(pp_iv, int_vector<>(path.size()));
+        // TODO resize ... to fit
+        size_t path_off = 0;
+        size_t pe_off = 0;
+        size_t pp_off = 0;
+        for (size_t i = 0; i < path.size(); ++i) {
+            //cerr << i << endl;
+            auto& node_id = path[i];
+            //cerr << node_id << endl;
+            // record node
+            pe_bv[node_rank_as_entity(node_id)] = 1;
+            // and record node offset in path
+            pp_iv[pp_off++] = path_off;
+            path_off += node_label[node_id].size();
+            // find the next edge in the path, and record it
+            if (i+1 < path.size()) { // if there is a next node
+                auto& next_node_id = path[i+1];
+                pe_bv[edge_rank_as_entity(node_id, next_node_id)] = 1;
+            }
+        }
+        util::bit_compress(pp_iv);
+    }
+
+    // handle path names
+    util::assign(pn_iv, int_vector<>(path_names.size()));
+    util::assign(pn_bv, bit_vector(path_names.size()));
+    // now record path name starts
+    for (size_t i = 0; i < path_names.size(); ++i) {
+        pn_iv[i] = path_names[i];
+        if (path_names[i] == path_name_marker) {
+            pn_bv[i] = 1; // register name start
+        }
+    }
+    //util::bit_compress(pn_iv);
+    string path_name_file = "@pathnames.iv";
+    store_to_file((const char*)path_names.c_str(), path_name_file);
+    construct(pn_csa, path_name_file, 1);
+    
     /*
     vlc_vector<> f_civ(f_iv);
     rrr_vector<> f_cbv(f_bv);
@@ -377,6 +436,21 @@ void SuccinctGraph::from_vg(istream& in) {
         }
     }
 
+    cerr << "validating paths" << endl;
+    for (auto& pathpair : path_nodes) {
+        const string& path_name = pathpair.first;
+        const vector<int64_t>& path = pathpair.second;
+        size_t prank = path_rank(path_name);
+        bit_vector& pe_bv = pe_v[prank-1];
+        int_vector<>& pp_iv = pp_v[prank-1];
+        // check each entity in the nodes is present
+        for (auto& id : path) {
+            assert(pe_bv[node_rank_as_entity(id)]);
+        }
+        //cerr << path_name << " rank = " << prank << endl;
+        // check membership now for each entity in the path
+    }
+
     cerr << "graph ok" << endl;
 
 }
@@ -437,6 +511,39 @@ vector<Edge> SuccinctGraph::edges_from(int64_t id) {
 
 int64_t SuccinctGraph::max_rank(void) {
     return s_cbv_rank(s_cbv.size());
+}
+
+size_t SuccinctGraph::node_rank_as_entity(int64_t id) {
+    //cerr << id_to_rank(id) << endl;
+    return f_bv_select(id_to_rank(id));
+}
+
+size_t SuccinctGraph::edge_rank_as_entity(int64_t id1, int64_t id2) {
+    size_t rank1 = id_to_rank(id1);
+    size_t rank2 = id_to_rank(id2);
+    //cerr << "Finding rank for " << id1 << "(" << rank1 << ") " << " -> " << id2 << "(" << rank2 << ")"<< endl;
+    size_t erank = node_rank_as_entity(id1);
+    size_t f_start = f_bv_select(rank1);
+    size_t f_end = f_bv_select(rank1+1);
+    //cerr << f_start << " to " << f_end << endl;
+    for (size_t i = f_start; i < f_end; ++i) {
+        //cerr << f_iv[i] << endl;
+        if (rank2 == f_iv[i]) {
+            return i;
+        }
+    }
+    //cerr << "shoudn't get here" << endl;
+    assert(false);
+}
+
+size_t SuccinctGraph::path_rank(const string& name) {
+    // find the name in the csa
+    auto occs = locate(pn_csa, name);
+    if (occs.size() > 1) {
+        cerr << "multiple hits for " << name << endl;
+        assert(false);
+    }
+    return occs[0];
 }
 
 /*
