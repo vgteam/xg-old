@@ -19,6 +19,8 @@ void help_main(char** argv) {
          << "    -v, --vg FILE        compress graph in vg FILE" << endl
          << "    -o, --out FILE       serialize graph to FILE" << endl
          << "    -i, --in FILE        use index in FILE" << endl
+         << "    -n, --node ID        graph neighborhood around node with ID" << endl
+         << "    -c, --context N      steps of context to extract when building neighborhood" << endl
          << "    -s, --node-seq ID    provide node sequence for ID" << endl
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
@@ -39,6 +41,8 @@ int main(int argc, char** argv) {
     bool edges_from = false;
     bool edges_to = false;
     bool node_sequence = false;
+    int context_steps = 0;
+    bool node_context = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -49,7 +53,8 @@ int main(int argc, char** argv) {
                 {"vg", required_argument, 0, 'v'},
                 {"out", required_argument, 0, 'o'},
                 {"in", required_argument, 0, 'i'},
-                //{"node-id", required_argument, 0, 'n'},
+                {"node", required_argument, 0, 'n'},
+                {"context", required_argument, 0, 'c'},
                 {"edges-from", required_argument, 0, 'f'},
                 {"edges-to", required_argument, 0, 't'},
                 {"node-seq", required_argument, 0, 's'},
@@ -57,7 +62,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -79,18 +84,27 @@ int main(int argc, char** argv) {
             in_name = optarg;
             break;
 
+        case 'n':
+            node_id = atol(optarg);
+            node_context = true;
+            break;
+
+        case 'c':
+            context_steps = atoi(optarg);
+            break;
+
         case 'f':
-            node_id = atoi(optarg);
+            node_id = atol(optarg);
             edges_from = true;
             break;
             
         case 't':
-            node_id = atoi(optarg);
+            node_id = atol(optarg);
             edges_to = true;
             break;
 
         case 's':
-            node_id = atoi(optarg);
+            node_id = atol(optarg);
             node_sequence = true;
             break;
             
@@ -156,6 +170,13 @@ int main(int argc, char** argv) {
         for (auto& edge : edges) {
             cout << edge.from() << " -> " << edge.to() << endl;
         }
+    }
+
+    if (node_context) {
+        Graph g;
+        graph->neighborhood(node_id, context_steps, g);
+        vector<Graph> gb = { g };
+        stream::write_buffered(cout, gb, 0);
     }
 
     // fail...

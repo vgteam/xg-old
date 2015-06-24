@@ -23,16 +23,24 @@ using namespace vg;
 
 class SuccinctGraph {
 public:
-    SuccinctGraph(void) : path_name_marker('#') { }
+    SuccinctGraph(void) : path_name_marker('#'),
+                          seq_length(0),
+                          node_count(0),
+                          edge_count(0),
+                          path_count(0) { }
     ~SuccinctGraph(void) { }
     SuccinctGraph(istream& in);
     void from_vg(istream& in);
     void load(istream& in);
     size_t serialize(std::ostream& out, sdsl::structure_tree_node* v = NULL, std::string name = "");
-    // build up interface here
+    size_t seq_length;
+    size_t node_count;
+    size_t edge_count;
+    size_t path_count;
     size_t id_to_rank(int64_t id);
     int64_t rank_to_id(size_t rank);
-    int64_t max_rank(void);
+    size_t max_node_rank(void);
+    size_t max_path_rank(void);
     Node node(int64_t id); // gets node sequence
     string node_sequence(int64_t id);
     vector<Edge> edges_to(int64_t id);
@@ -42,10 +50,15 @@ public:
     Path path(const string& name);
     size_t path_rank(const string& name);
     string path_name(size_t rank);
+    vector<size_t> paths_of_entity(size_t rank);
+    vector<size_t> paths_of_node(int64_t id);
+    vector<size_t> paths_of_edge(int64_t id1, int64_t id2);
+    map<string, Mapping> node_mappings(int64_t id);
+    bool path_contains_entity(const string& name, size_t rank);
     bool has_edge(int64_t id1, int64_t id2);
-    Graph neighborhood(int64_t rank, int32_t steps);
-    Graph range(int64_t rank1, int64_t rank2);
-    Graph region(string& path_name, int64_t start, int64_t stop);
+    void neighborhood(int64_t id, size_t steps, Graph& g);
+    void range(int64_t rank1, int64_t rank2, Graph& g);
+    void region(string& path_name, int64_t start, int64_t stop, Graph& g);
     char path_name_marker;
 private:
     // sequence/integer vector
@@ -92,6 +105,8 @@ private:
     bit_vector pe_bv; // entity starts in ep vector
     wt_int<> pe_wt; // allows quick lookup of all entities in a particular path
 };
+
+Mapping new_mapping(const string& name, int64_t id);
 
 }
 

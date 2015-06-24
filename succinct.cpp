@@ -39,14 +39,10 @@ SuccinctGraph::SuccinctGraph(istream& in) {
 
 void SuccinctGraph::load(istream& in) {
 
-    size_t sequence_length;
-    size_t node_count;
-    size_t edge_count;
-    size_t path_count;
-    
-    sdsl::read_member(sequence_length, in);
+    sdsl::read_member(seq_length, in);
     sdsl::read_member(node_count, in);
     sdsl::read_member(edge_count, in);
+    sdsl::read_member(path_count, in);
     size_t entity_count = node_count + edge_count;
     //cerr << sequence_length << ", " << node_count << ", " << edge_count << endl;
 
@@ -93,7 +89,7 @@ size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std:
     written += sdsl::write_member(s_iv.size(), out, child, "sequence_length");
     written += sdsl::write_member(i_iv.size(), out, child, "node_count");
     written += sdsl::write_member(f_iv.size()-i_iv.size(), out, child, "edge_count");
-    //written += sdsl::write_member(path_count, out, child, "path_count");
+    written += sdsl::write_member(path_count, out, child, "path_count");
 
     written += i_iv.serialize(out, child, "id_vector");
     written += i_wt.serialize(out, child, "id_wavelet_tree");
@@ -137,21 +133,13 @@ void SuccinctGraph::from_vg(istream& in) {
     map<int64_t, set<int64_t> > from_to;
     map<int64_t, set<int64_t> > to_from;
     map<string, vector<int64_t> > path_nodes;
-    size_t seq_length = 0;
-    size_t node_count = 0;
-    size_t edge_count = 0;
-    size_t path_entry_count = 0;
-    
+
     // we can always resize smaller, but not easily extend
     function<void(Graph&)> lambda = [this,
                                      &node_label,
                                      &from_to,
                                      &to_from,
-                                     &path_nodes,
-                                     &seq_length,
-                                     &node_count,
-                                     &edge_count,
-                                     &path_entry_count](Graph& graph) {
+                                     &path_nodes](Graph& graph) {
         for (int i = 0; i < graph.node_size(); ++i) {
             const Node& n = graph.node(i);
             if (node_label.find(n.id()) == node_label.end()) {
@@ -174,17 +162,17 @@ void SuccinctGraph::from_vg(istream& in) {
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
                 path_nodes[name].push_back(m.position().node_id());
-                ++path_entry_count;
             }
         }
     };
     stream::for_each(in, lambda);
+    path_count = path_nodes.size();
 
     size_t entity_count = node_count + edge_count;
     cerr << "graph has " << seq_length << "bp in sequence, "
          << node_count << " nodes, "
          << edge_count << " edges, and "
-         << path_entry_count << " nodes in paths" << endl;
+         << path_count << " nodes in paths" << endl;
 
     // set up our compressed representation
     util::assign(s_iv, int_vector<>(seq_length, 0, 3));
@@ -425,18 +413,16 @@ void SuccinctGraph::from_vg(istream& in) {
         + paths_mb_size
         ) << endl;
     
-    //cerr << s_civ << endl;
-    /*
-    for (int i = 0; i < s_civ.size(); ++i) {
-        cerr << (char) s_civ[i];
+    cerr << s_iv << endl;
+    for (int i = 0; i < s_iv.size(); ++i) {
+        cerr << revdna3bit(s_iv[i]);
     } cerr << endl;
-    cerr << s_cbv << endl;
-    cerr << f_civ << endl;
-    cerr << f_cbv << endl;
-    cerr << t_civ << endl;
-    cerr << t_cbv << endl;
-    cerr << i_civ << endl;
-    */
+    cerr << s_bv << endl;
+    cerr << f_iv << endl;
+    cerr << f_bv << endl;
+    cerr << t_iv << endl;
+    cerr << t_bv << endl;
+    cerr << i_iv << endl;
 
     cerr << "validating graph sequence" << endl;
     int max_id = s_cbv_rank(s_cbv.size());
@@ -533,7 +519,7 @@ Node SuccinctGraph::node(int64_t id) {
 string SuccinctGraph::node_sequence(int64_t id) {
     size_t rank = id_to_rank(id);
     size_t start = s_cbv_select(rank);
-    size_t end = rank == max_rank() ? s_cbv.size() : s_cbv_select(rank+1);
+    size_t end = rank == node_count ? s_cbv.size() : s_cbv_select(rank+1);
     string s; s.resize(end-start);
     for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
         s[i-start] = revdna3bit(s_iv[i]);
@@ -546,28 +532,28 @@ size_t SuccinctGraph::id_to_rank(int64_t id) {
 }
 
 int64_t SuccinctGraph::rank_to_id(size_t rank) {
-    return i_iv[rank];
+    return i_iv[rank-1];
 }
 
 vector<Edge> SuccinctGraph::edges_to(int64_t id) {
-    size_t rank = id_to_rank(id);
-    size_t t_start = t_bv_select(rank);
-    size_t t_end = t_bv_select(rank+1);
     vector<Edge> edges;
+    size_t rank = id_to_rank(id);
+    size_t t_start = t_bv_select(rank)+1;
+    size_t t_end = rank == node_count ? t_bv.size() : t_bv_select(rank+1);
     for (size_t i = t_start; i < t_end; ++i) {
         Edge edge;
-        edge.set_from(rank_to_id(t_iv[i]));
         edge.set_to(id);
+        edge.set_from(rank_to_id(t_iv[i]));
         edges.push_back(edge);
     }
     return edges;
 }
 
 vector<Edge> SuccinctGraph::edges_from(int64_t id) {
-    size_t rank = id_to_rank(id);
-    size_t f_start = f_bv_select(rank);
-    size_t f_end = f_bv_select(rank+1);
     vector<Edge> edges;
+    size_t rank = id_to_rank(id);
+    size_t f_start = f_bv_select(rank)+1;
+    size_t f_end = rank == node_count ? f_bv.size() : f_bv_select(rank+1);
     for (size_t i = f_start; i < f_end; ++i) {
         Edge edge;
         edge.set_from(id);
@@ -577,8 +563,14 @@ vector<Edge> SuccinctGraph::edges_from(int64_t id) {
     return edges;
 }
 
-int64_t SuccinctGraph::max_rank(void) {
+size_t SuccinctGraph::max_node_rank(void) {
     return s_cbv_rank(s_cbv.size());
+}
+
+size_t SuccinctGraph::max_path_rank(void) {
+    cerr << pn_bv << endl;
+    cerr << "..." << pn_bv_rank(pn_bv.size()) << endl;
+    return pn_bv_rank(pn_bv.size());
 }
 
 size_t SuccinctGraph::node_rank_as_entity(int64_t id) {
@@ -624,18 +616,139 @@ size_t SuccinctGraph::path_rank(const string& name) {
         cerr << "multiple hits for " << name << endl;
         assert(false);
     }
+    cerr << "path named " << name << " is at " << occs[0] << endl;
     return pn_bv_rank(occs[0]);
 }
 
 string SuccinctGraph::path_name(size_t rank) {
     size_t start = pn_bv_select(rank)+1; // step past '#'
-    size_t end = (rank == pn_bv_rank(pn_bv.size()-1)) ? pn_bv.size() : pn_bv_select(rank+1);
+    size_t end = rank == path_count ? pn_iv.size() : pn_bv_select(rank+1);
     string name; name.resize(end-start);
     for (size_t i = start; i < end; ++i) {
         name[i-start] = pn_iv[i];
     }
     return name;
 }
+
+bool SuccinctGraph::path_contains_entity(const string& name, size_t rank) {
+    return 1 == pe_v[path_rank(name)][rank];
+}
+
+
+
+vector<size_t> SuccinctGraph::paths_of_entity(size_t rank) {
+    vector<size_t> path_ranks;
+    for (size_t i = 0; i < pe_v.size(); ++i) {
+        if (pe_v[i][rank] == 1) {
+            path_ranks.push_back(i+1);
+        }
+    }
+    return path_ranks;
+}
+
+vector<size_t> SuccinctGraph::paths_of_node(int64_t id) {
+    return paths_of_entity(node_rank_as_entity(id));
+}
+
+vector<size_t> SuccinctGraph::paths_of_edge(int64_t id1, int64_t id2) {
+    return paths_of_entity(edge_rank_as_entity(id1, id2));
+}
+
+map<string, Mapping> SuccinctGraph::node_mappings(int64_t id) {
+    map<string, Mapping> mappings;
+    for (auto i : paths_of_entity(node_rank_as_entity(id))) {
+        // get the path name
+        string name = path_name(i);
+        mappings[name] = new_mapping(name, id);
+    }
+    return mappings;
+}
+
+void SuccinctGraph::neighborhood(int64_t id, size_t steps, Graph& g) {
+    map<int64_t, Node> nodes;
+    map<pair<int64_t, int64_t>, Edge> edges;
+    set<int64_t> to_visit;
+    to_visit.insert(id);
+    for (size_t i = 0; i < steps; ++i) {
+        set<int64_t> to_visit_next;
+        for (auto id : to_visit) {
+            // build out the graph
+            // if we have nodes we haven't seeen
+            if (nodes.find(id) != nodes.end()) continue;
+            nodes[id] = node(id);
+            for (auto& edge : edges_from(id)) {
+                edges[make_pair(edge.from(), edge.to())] = edge;
+                to_visit_next.insert(edge.to());
+            }
+            for (auto& edge : edges_to(id)) {
+                edges[make_pair(edge.from(), edge.to())] = edge;
+                to_visit_next.insert(edge.from());
+            }
+        }
+        to_visit = to_visit_next;
+    }
+    for (auto& e : edges) {
+        auto& edge = e.second;
+        *g.add_edge() = edge;
+        // get missing nodes
+        if (nodes.find(edge.from()) == nodes.end()) {
+            nodes[edge.from()] = node(edge.from());
+        }
+        if (nodes.find(edge.to()) == nodes.end()) {
+            nodes[edge.to()] = node(edge.to());
+        }
+    }
+    map<string, Path*> paths;
+    for (auto& n : nodes) {
+        auto& node = n.second;
+        *g.add_node() = node;
+        for (auto& m : node_mappings(n.first)) {
+            if (paths.find(m.first) == paths.end()) {
+                Path* p = g.add_path();
+                paths[m.first] = p;
+                p->set_name(m.first);
+            }
+            Path* path = paths[m.first];
+            *path->add_mapping() = m.second;
+            //*g.add_path() = path;
+        }
+    }
+    // if the graph ids partially ordered, this works no prob
+    // build up paths now that we have the graph
+    /*
+    */
+
+}
+
+Mapping new_mapping(const string& name, int64_t id) {
+    Mapping m;
+    m.mutable_position()->set_node_id(id);
+    return m;
+}
+
+// a graph composed of this node, it's edges, and its paths
+/*
+void VG::node_context(Node* node, VG& g) {
+    // add the node
+    g.add_node(*node);
+    // and its edges
+    vector<int64_t>& to = edges_to(node->id());
+    for (vector<int64_t>::iterator e = to.begin(); e != to.end(); ++e) {
+        g.add_edge(*get_edge(*e, node->id()));
+    }
+    vector<int64_t>& from = edges_from(node->id());
+    for (vector<int64_t>::iterator e = from.begin(); e != from.end(); ++e) {
+        g.add_edge(*get_edge(node->id(), *e));
+    }
+    // and its path members
+    if (paths.has_node_mapping(node)) {
+        auto& node_mappings = paths.get_node_mapping(node);
+        for (auto& i : node_mappings) {
+            g.paths.append_mapping(i.first, *i.second);
+        }
+    }
+}
+*/
 
 /*
 Path SuccinctGraph::path(string& name) {
