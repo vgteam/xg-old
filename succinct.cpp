@@ -412,7 +412,8 @@ void SuccinctGraph::from_vg(istream& in) {
         + size_in_mega_bytes(s_cbv)
         + paths_mb_size
         ) << endl;
-    
+
+    /*
     cerr << s_iv << endl;
     for (int i = 0; i < s_iv.size(); ++i) {
         cerr << revdna3bit(s_iv[i]);
@@ -423,6 +424,7 @@ void SuccinctGraph::from_vg(istream& in) {
     cerr << t_iv << endl;
     cerr << t_bv << endl;
     cerr << i_iv << endl;
+    */
 
     cerr << "validating graph sequence" << endl;
     int max_id = s_cbv_rank(s_cbv.size());
@@ -616,7 +618,7 @@ size_t SuccinctGraph::path_rank(const string& name) {
         cerr << "multiple hits for " << name << endl;
         assert(false);
     }
-    cerr << "path named " << name << " is at " << occs[0] << endl;
+    //cerr << "path named " << name << " is at " << occs[0] << endl;
     return pn_bv_rank(occs[0]);
 }
 
@@ -633,8 +635,6 @@ string SuccinctGraph::path_name(size_t rank) {
 bool SuccinctGraph::path_contains_entity(const string& name, size_t rank) {
     return 1 == pe_v[path_rank(name)][rank];
 }
-
-
 
 vector<size_t> SuccinctGraph::paths_of_entity(size_t rank) {
     vector<size_t> path_ranks;
