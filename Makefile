@@ -15,7 +15,9 @@ EXECUTABLE=xg
 all: $(EXECUTABLE)
 
 doc: README.md
-	pandoc -o README.html -s README.md
+README.md:
+	pandoc -o README.html -s README.base.md
+	pandoc -o README.md -s README.html
 #	pandoc -o README.pdf README.md
 
 $(LIBPROTOBUF):

@@ -8,8 +8,21 @@
   <style type="text/css">code{white-space: pre;}</style>
 </head>
 <body>
-<h1 id="succinct-graphs">succinct graphs</h1>
-<p><a href="https://travis-ci.org/ekg/succinct-graph"><img src="https://travis-ci.org/ekg/succinct-graph.svg" alt="Build Status" /></a></p>
+<h1 id="xg">xg</h1>
+<h2 id="succinct-labeled-graphs-with-collections-and-paths"><em>succinct labeled graphs with collections and paths</em></h2>
+<p><a href="https://travis-ci.org/ekg/xg"><img src="https://travis-ci.org/ekg/xg.svg" alt="Build Status" /></a></p>
+<h2 id="what">what?</h2>
+<p>This library provides an interface to the construction and query of succinct/compressed labeled graphs, labeled collections of nodes and edges, and paths through the graph. The primary motivation is to index <a href="https://github.com/ekg/vg#vg">variation graphs</a> of the type produced by <a href="https://github.com/ekg/vg"><code>vg</code></a>, but in principle the library could be used for any labeled, directed graph.</p>
+<p>Graphs indexed with <code>xg</code> can be loaded and queried using variety of high-performance interfaces backed by efficient, succinct data structures from <a href="https://github.com/simongog/sdsl-lite">sdsl-lite</a>.</p>
+<h2 id="usage">usage</h2>
+<p>First build:</p>
+<pre class="shell"><code>make
+make test</code></pre>
+<p>Now you can index a graph constructed with vg, then obtain a subgraph starting at a particular node and extending up to 5 steps away:</p>
+<pre class="shell"><code>./xg -v test/data/z.vg -o z.xg
+./xg -i z.xg -n 235 -c 5 | vg view -</code></pre>
+<p><code>vg view</code> allows us to see the graph in GFA format.</p>
+<p>See <a href="https://github.com/ekg/xg/blob/master/main.cpp"><code>main.cpp</code></a> for example usage.</p>
 <h2 id="challenge">challenge</h2>
 <p><code>vg</code>'s current graph memory model is weak and extremely bloated. It relies on fixed-width 64-bit integer ids and large hash tables mapping these to other entities. This makes it difficult to store in memory, and a general-purpose key-value store (rocksdb) is used to allow low-memory access to the entire graph. Although this design has some advantages, querying the graph requires costly IO operations, and thus use must be managed carefully when developing high-performance applications.</p>
 <p>Fully-indexed graphs should be cheap to store and hold in memory, but it doesn't seem there is a standard approach that can be used just for high-performance access to the sequence and identifier space of the graph. Most work has gone into improving performance for querying the text of such a graph (<a href="https://github.com/jltsiren/gcsa2">GCSA</a>) or generating one out of sequencing reads (assemblers such as <a href="https://github.com/jts/sga">SGA</a> or <a href="https://github.com/lh3/fermi2">fermi2</a>).</p>
@@ -22,7 +35,6 @@
 <li>node and edge path membership</li>
 </ul>
 <h2 id="sketch">sketch</h2>
-<p><a href="https://rawgit.com/ekg/succinct-graph/master/README.html">read this in HTML for rendered equations</a></p>
 <p>In theory we could construct a mutable system based on <a href="http://arxiv.org/abs/1204.3581">wavelet tries</a>, but research in this area is very new, and I have not found readily-available code for working with these systems. It should be possible to construct mutable wavelet tries using sdsl-lite as a basis, but at present this may be too complex an objective. An immutable system seems like a straightforward thing to do.</p>
 <p>First some definitions. We have a graph <span class="math"><em>G</em> = <em>N</em>, <em>E</em>, <em>P</em></span> with nodes <span class="math"><em>N</em> = <em>n</em><sub>1</sub>, …, <em>n</em><sub>∣<em>N</em>∣</sub></span>, directed edges <span class="math"><em>E</em> = <em>e</em><sub>1</sub>, …, <em>e</em><sub>∣<em>E</em>∣</sub></span>, and paths <span class="math"><em>P</em> = <em>p</em><sub>1</sub>, …, <em>p</em><sub>∣<em>P</em>∣</sub></span>. Nodes match labels <span class="math"><em>l</em><sub><em>n</em><sub><em>i</em></sub></sub></span> to ranks <span class="math"><em>i</em></span> in the collection of node labels: <span class="math"><em>n</em><sub><em>i</em></sub> = <em>l</em><sub><em>n</em><sub><em>i</em></sub></sub>, <em>i</em></span>. Edges go from one node to another <span class="math"><em>e</em><sub><em>j</em></sub> = <em>n</em><sub><em>x</em></sub>, <em>n</em><sub><em>y</em></sub></span>. Paths match labels <span class="math"><em>l</em><sub><em>p</em><sub><em>k</em></sub></sub></span> to sets of nodes and edges <span class="math"><em>p</em><sub><em>k</em></sub> = <em>l</em><sub><em>p</em><sub><em>k</em></sub></sub>, {<em>n</em><sub>1</sub>, <em>e</em><sub>3</sub>, <em>n</em><sub>4</sub>, <em>e</em><sub>5</sub>, …}</span>.</p>
 <p>We first store the concatenated sequences of all elements, <span class="math"><em>S</em> = <em>l</em><sub><em>n</em><sub>1</sub></sub><em>l</em><sub><em>n</em><sub>2</sub></sub><em>l</em><sub><em>n</em><sub>3</sub></sub>…<em>l</em><sub><em>n</em><sub>∣<em>N</em>∣</sub></sub></span>, in the graph in a <a href="https://github.com/simongog/sdsl-lite/blob/master/include/sdsl/enc_vector.hpp#L48-L58">compressed integer vector</a>, <span class="math"><em>S</em><sub><em>i</em><em>v</em></sub></span>. A second <a href="https://github.com/simongog/sdsl-lite/blob/master/include/sdsl/rrr_vector.hpp">compressed bitvector</a>, <span class="math"><em>S</em><sub><em>b</em><em>v</em></sub> : ∣<em>S</em><sub><em>i</em><em>v</em></sub>∣ = ∣<em>S</em><sub><em>b</em><em>v</em></sub>∣</span>, flags node starts, providing a system of node identifiers. We can apply <span class="math"><em>r</em><em>a</em><em>n</em><em>k</em><sub>1</sub>(<em>S</em><sub><em>b</em><em>v</em></sub>, <em>x</em>)</span> to determine the node rank/id at a given position in <span class="math"><em>S</em><sub><em>i</em><em>v</em></sub></span>, and we can use <span class="math"><em>s</em><em>e</em><em>l</em><em>e</em><em>c</em><em>t</em><sub>1</sub>(<em>S</em><sub><em>b</em><em>v</em></sub>, <em>x</em>)</span> to find the positions in <span class="math"><em>S</em><sub><em>i</em><em>v</em></sub></span> corresponding to node with rank/id <span class="math"><em>x</em></span>, thus allowing basic navigation of the nodes and their labels.</p>
