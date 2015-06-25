@@ -17,7 +17,9 @@ all: $(EXECUTABLE)
 doc: README.md
 README.md: README.base.md
 	pandoc -o README.html -s README.base.md
-	cp README.base.md README.md
+	pandoc -o DESIGN.html -s DESIGN.md
+	cat README.base.md >README.md
+	cat DESIGN.html | tail -7| sed 's%<p>\|</p>%%g' | head -5 >>README.md
 
 $(LIBPROTOBUF):
 	cd $(STREAM) && $(MAKE)
