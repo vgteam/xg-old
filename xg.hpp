@@ -54,6 +54,8 @@ public:
     vector<size_t> paths_of_node(int64_t id);
     vector<size_t> paths_of_edge(int64_t id1, int64_t id2);
     map<string, Mapping> node_mappings(int64_t id);
+    bool path_contains_node(const string& name, int64_t id);
+    bool path_contains_edge(const string& name, int64_t id1, int64_t id2);
     bool path_contains_entity(const string& name, size_t rank);
     bool has_edge(int64_t id1, int64_t id2);
     void neighborhood(int64_t id, size_t steps, Graph& g);

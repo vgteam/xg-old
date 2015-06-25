@@ -15,10 +15,9 @@ EXECUTABLE=xg
 all: $(EXECUTABLE)
 
 doc: README.md
-README.md:
+README.md: README.base.md
 	pandoc -o README.html -s README.base.md
 	cp README.base.md README.md
-#	pandoc -o README.pdf README.md
 
 $(LIBPROTOBUF):
 	cd $(STREAM) && $(MAKE)

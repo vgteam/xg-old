@@ -302,12 +302,10 @@ void XG::from_vg(istream& in) {
         // path members (of nodes and edges ordered as per f_bv)
         bit_vector& pe_bv = pe_v.back();
         util::assign(pe_bv, bit_vector(entity_count));
-        // TODO resize
         pp_v.emplace_back();
         // node positions in path
         int_vector<>& pp_iv = pp_v.back();
         util::assign(pp_iv, int_vector<>(path.size()));
-        // TODO resize ... to fit
         size_t path_off = 0;
         size_t pe_off = 0;
         size_t pp_off = 0;
@@ -634,6 +632,14 @@ string XG::path_name(size_t rank) {
 
 bool XG::path_contains_entity(const string& name, size_t rank) {
     return 1 == pe_v[path_rank(name)][rank];
+}
+
+bool XG::path_contains_node(const string& name, int64_t id) {
+    return path_contains_entity(name, node_rank_as_entity(id));
+}
+
+bool XG::path_contains_edge(const string& name, int64_t id1, int64_t id2) {
+    return path_contains_entity(name, edge_rank_as_entity(id1, id2));
 }
 
 vector<size_t> XG::paths_of_entity(size_t rank) {
