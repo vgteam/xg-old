@@ -19,7 +19,7 @@ The basic requirement is a system that a minimal amount of memory to store the s
 
 ## sketch
 
-[read this in HTML for rendered equations](https://rawgit.com/ekg/succinct-graph/master/README.html)
+[read this in HTML for rendered equations](https://rawgit.com/ekg/xg/master/README.html)
 
 In theory we could construct a mutable system based on [wavelet tries](http://arxiv.org/abs/1204.3581), but research in this area is very new, and I have not found readily-available code for working with these systems. It should be possible to construct mutable wavelet tries using sdsl-lite as a basis, but at present this may be too complex an objective. An immutable system seems like a straightforward thing to do.
 
