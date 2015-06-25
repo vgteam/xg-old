@@ -3,15 +3,15 @@
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 
-succinctg=../succinctg
+xg=../xg
 
 all: test clean
 
-test: $(succinctg)
+test: $(xg)
 	prove -v t
 
-$(succinctg):
-	cd .. && $(MAKE) succinctg
+$(xg):
+	cd .. && $(MAKE) xg
 
 #clean:
 #	rm -f build_graph

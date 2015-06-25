@@ -15,21 +15,21 @@
 #include "sdsl/suffix_arrays.hpp"
 
 
-namespace scg {
+namespace xg {
 
 using namespace std;
 using namespace sdsl;
 using namespace vg;
 
-class SuccinctGraph {
+class XG {
 public:
-    SuccinctGraph(void) : path_name_marker('#'),
+    XG(void) : path_name_marker('#'),
                           seq_length(0),
                           node_count(0),
                           edge_count(0),
                           path_count(0) { }
-    ~SuccinctGraph(void) { }
-    SuccinctGraph(istream& in);
+    ~XG(void) { }
+    XG(istream& in);
     void from_vg(istream& in);
     void load(istream& in);
     size_t serialize(std::ostream& out, sdsl::structure_tree_node* v = NULL, std::string name = "");

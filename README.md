@@ -1,6 +1,7 @@
-# succinct graphs
+# xg
+## *succinct graphs*
 
-[![Build Status](https://travis-ci.org/ekg/succinct-graph.svg)](https://travis-ci.org/ekg/succinct-graph)
+[![Build Status](https://travis-ci.org/ekg/xg.svg)](https://travis-ci.org/ekg/xg)
 
 ## challenge
 

@@ -4,12 +4,12 @@
 #include "sdsl/bit_vectors.hpp"
 #include "stream.hpp"
 #include "cpp/vg.pb.h"
-#include "succinct.hpp"
+#include "xg.hpp"
 
 using namespace std;
 using namespace sdsl;
 using namespace vg;
-using namespace scg;
+using namespace xg;
 
 void help_main(char** argv) {
     cerr << "usage: " << argv[0] << " [options] <graph.vg> >[graph.scg]" << endl
@@ -119,16 +119,16 @@ int main(int argc, char** argv) {
         }
     }
 
-    SuccinctGraph* graph;
+    XG* graph;
     //string file_name = argv[optind];
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
-        graph = new SuccinctGraph;
+        graph = new XG;
         graph->from_vg(std::cin);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
-        graph = new SuccinctGraph;
+        graph = new XG;
         graph->from_vg(in);
     }
 
@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
     }
 
     if (in_name.size()) {
-        graph = new SuccinctGraph;
+        graph = new XG;
         if (in_name == "-") {
             graph->load(std::cin);
         } else {

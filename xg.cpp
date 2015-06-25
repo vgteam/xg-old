@@ -1,7 +1,7 @@
-#include "succinct.hpp"
+#include "xg.hpp"
 #include "stream.hpp"
 
-namespace scg {
+namespace xg {
 
 int dna3bit(char c) {
     switch (c) {
@@ -33,11 +33,11 @@ char revdna3bit(int i) {
     }
 }
 
-SuccinctGraph::SuccinctGraph(istream& in) {
+XG::XG(istream& in) {
     load(in);
 }
 
-void SuccinctGraph::load(istream& in) {
+void XG::load(istream& in) {
 
     sdsl::read_member(seq_length, in);
     sdsl::read_member(node_count, in);
@@ -81,7 +81,7 @@ void SuccinctGraph::load(istream& in) {
     }
 }
 
-size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std::string name) {
+size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string name) {
 
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(s, name, sdsl::util::class_name(*this));
     size_t written = 0;
@@ -126,7 +126,7 @@ size_t SuccinctGraph::serialize(ostream& out, sdsl::structure_tree_node* s, std:
     
 }
 
-void SuccinctGraph::from_vg(istream& in) {
+void XG::from_vg(istream& in) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -511,14 +511,14 @@ void SuccinctGraph::from_vg(istream& in) {
 
 }
 
-Node SuccinctGraph::node(int64_t id) {
+Node XG::node(int64_t id) {
     Node n;
     n.set_id(id);
     n.set_sequence(node_sequence(id));
     return n;
 }
 
-string SuccinctGraph::node_sequence(int64_t id) {
+string XG::node_sequence(int64_t id) {
     size_t rank = id_to_rank(id);
     size_t start = s_cbv_select(rank);
     size_t end = rank == node_count ? s_cbv.size() : s_cbv_select(rank+1);
@@ -529,15 +529,15 @@ string SuccinctGraph::node_sequence(int64_t id) {
     return s;
 }
 
-size_t SuccinctGraph::id_to_rank(int64_t id) {
+size_t XG::id_to_rank(int64_t id) {
     return i_wt.select(1, id)+1;
 }
 
-int64_t SuccinctGraph::rank_to_id(size_t rank) {
+int64_t XG::rank_to_id(size_t rank) {
     return i_iv[rank-1];
 }
 
-vector<Edge> SuccinctGraph::edges_to(int64_t id) {
+vector<Edge> XG::edges_to(int64_t id) {
     vector<Edge> edges;
     size_t rank = id_to_rank(id);
     size_t t_start = t_bv_select(rank)+1;
@@ -551,7 +551,7 @@ vector<Edge> SuccinctGraph::edges_to(int64_t id) {
     return edges;
 }
 
-vector<Edge> SuccinctGraph::edges_from(int64_t id) {
+vector<Edge> XG::edges_from(int64_t id) {
     vector<Edge> edges;
     size_t rank = id_to_rank(id);
     size_t f_start = f_bv_select(rank)+1;
@@ -565,23 +565,23 @@ vector<Edge> SuccinctGraph::edges_from(int64_t id) {
     return edges;
 }
 
-size_t SuccinctGraph::max_node_rank(void) {
+size_t XG::max_node_rank(void) {
     return s_cbv_rank(s_cbv.size());
 }
 
-size_t SuccinctGraph::max_path_rank(void) {
+size_t XG::max_path_rank(void) {
     cerr << pn_bv << endl;
     cerr << "..." << pn_bv_rank(pn_bv.size()) << endl;
     return pn_bv_rank(pn_bv.size());
 }
 
-size_t SuccinctGraph::node_rank_as_entity(int64_t id) {
+size_t XG::node_rank_as_entity(int64_t id) {
     //cerr << id_to_rank(id) << endl;
     return f_bv_select(id_to_rank(id));
 }
 
 // snoop through the forward table to check if the edge exists
-bool SuccinctGraph::has_edge(int64_t id1, int64_t id2) {
+bool XG::has_edge(int64_t id1, int64_t id2) {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
     size_t f_start = f_bv_select(rank1);
@@ -594,7 +594,7 @@ bool SuccinctGraph::has_edge(int64_t id1, int64_t id2) {
     return false;
 }
 
-size_t SuccinctGraph::edge_rank_as_entity(int64_t id1, int64_t id2) {
+size_t XG::edge_rank_as_entity(int64_t id1, int64_t id2) {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
     //cerr << "Finding rank for " << id1 << "(" << rank1 << ") " << " -> " << id2 << "(" << rank2 << ")"<< endl;
@@ -611,7 +611,7 @@ size_t SuccinctGraph::edge_rank_as_entity(int64_t id1, int64_t id2) {
     assert(false);
 }
 
-size_t SuccinctGraph::path_rank(const string& name) {
+size_t XG::path_rank(const string& name) {
     // find the name in the csa
     auto occs = locate(pn_csa, name);
     if (occs.size() > 1) {
@@ -622,7 +622,7 @@ size_t SuccinctGraph::path_rank(const string& name) {
     return pn_bv_rank(occs[0]);
 }
 
-string SuccinctGraph::path_name(size_t rank) {
+string XG::path_name(size_t rank) {
     size_t start = pn_bv_select(rank)+1; // step past '#'
     size_t end = rank == path_count ? pn_iv.size() : pn_bv_select(rank+1);
     string name; name.resize(end-start);
@@ -632,11 +632,11 @@ string SuccinctGraph::path_name(size_t rank) {
     return name;
 }
 
-bool SuccinctGraph::path_contains_entity(const string& name, size_t rank) {
+bool XG::path_contains_entity(const string& name, size_t rank) {
     return 1 == pe_v[path_rank(name)][rank];
 }
 
-vector<size_t> SuccinctGraph::paths_of_entity(size_t rank) {
+vector<size_t> XG::paths_of_entity(size_t rank) {
     vector<size_t> path_ranks;
     for (size_t i = 0; i < pe_v.size(); ++i) {
         if (pe_v[i][rank] == 1) {
@@ -646,15 +646,15 @@ vector<size_t> SuccinctGraph::paths_of_entity(size_t rank) {
     return path_ranks;
 }
 
-vector<size_t> SuccinctGraph::paths_of_node(int64_t id) {
+vector<size_t> XG::paths_of_node(int64_t id) {
     return paths_of_entity(node_rank_as_entity(id));
 }
 
-vector<size_t> SuccinctGraph::paths_of_edge(int64_t id1, int64_t id2) {
+vector<size_t> XG::paths_of_edge(int64_t id1, int64_t id2) {
     return paths_of_entity(edge_rank_as_entity(id1, id2));
 }
 
-map<string, Mapping> SuccinctGraph::node_mappings(int64_t id) {
+map<string, Mapping> XG::node_mappings(int64_t id) {
     map<string, Mapping> mappings;
     for (auto i : paths_of_entity(node_rank_as_entity(id))) {
         // get the path name
@@ -664,7 +664,7 @@ map<string, Mapping> SuccinctGraph::node_mappings(int64_t id) {
     return mappings;
 }
 
-void SuccinctGraph::neighborhood(int64_t id, size_t steps, Graph& g) {
+void XG::neighborhood(int64_t id, size_t steps, Graph& g) {
     map<int64_t, Node> nodes;
     map<pair<int64_t, int64_t>, Edge> edges;
     set<int64_t> to_visit;
@@ -751,13 +751,13 @@ void VG::node_context(Node* node, VG& g) {
 */
 
 /*
-Path SuccinctGraph::path(string& name) {
+Path XG::path(string& name) {
 }
-Graph SuccinctGraph::neighborhood(int64_t rank, int32_t steps) {
+Graph XG::neighborhood(int64_t rank, int32_t steps) {
 }
-Graph SuccinctGraph::range(int64_t rank1, int64_t rank2) {
+Graph XG::range(int64_t rank1, int64_t rank2) {
 }
-Graph SuccinctGraph::region(string& path_name, int64_t start, int64_t stop) {
+Graph XG::region(string& path_name, int64_t start, int64_t stop) {
 }
 */
 
