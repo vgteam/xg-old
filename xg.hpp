@@ -23,11 +23,12 @@ using namespace vg;
 
 class XG {
 public:
-    XG(void) : path_name_marker('#'),
-                          seq_length(0),
-                          node_count(0),
-                          edge_count(0),
-                          path_count(0) { }
+    XG(void) : start_marker('#'),
+               end_marker('$'),
+               seq_length(0),
+               node_count(0),
+               edge_count(0),
+               path_count(0) { }
     ~XG(void) { }
     XG(istream& in);
     void from_vg(istream& in);
@@ -61,7 +62,8 @@ public:
     void neighborhood(int64_t id, size_t steps, Graph& g);
     void range(int64_t rank1, int64_t rank2, Graph& g);
     void region(string& path_name, int64_t start, int64_t stop, Graph& g);
-    char path_name_marker;
+    char start_marker;
+    char end_marker;
 private:
     // sequence/integer vector
     int_vector<> s_iv;

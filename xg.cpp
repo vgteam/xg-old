@@ -297,7 +297,7 @@ void XG::from_vg(istream& in) {
         const string& path_name = pathpair.first;
         //cerr << path_name << endl;
         const vector<int64_t>& path = pathpair.second;
-        path_names += path_name_marker + path_name;
+        path_names += start_marker + path_name + end_marker;
         pe_v.emplace_back();
         // path members (of nodes and edges ordered as per f_bv)
         bit_vector& pe_bv = pe_v.back();
@@ -329,6 +329,7 @@ void XG::from_vg(istream& in) {
         }
         util::bit_compress(pp_iv);
     }
+    cerr << path_names << endl;
 
     // handle path names
     util::assign(pn_iv, int_vector<>(path_names.size()));
@@ -336,7 +337,7 @@ void XG::from_vg(istream& in) {
     // now record path name starts
     for (size_t i = 0; i < path_names.size(); ++i) {
         pn_iv[i] = path_names[i];
-        if (path_names[i] == path_name_marker) {
+        if (path_names[i] == start_marker) {
             pn_bv[i] = 1; // register name start
         }
     }
@@ -422,6 +423,12 @@ void XG::from_vg(istream& in) {
     cerr << t_iv << endl;
     cerr << t_bv << endl;
     cerr << i_iv << endl;
+    for (auto& bv : pe_v) {
+        cerr << bv << endl;
+    }
+    for (auto& iv : pp_v) {
+        cerr << iv << endl;
+    }
     */
 
     cerr << "validating graph sequence" << endl;
@@ -494,6 +501,7 @@ void XG::from_vg(istream& in) {
         const string& name = pathpair.first;
         const vector<int64_t>& path = pathpair.second;
         size_t prank = path_rank(name);
+        cerr << path_name(prank) << endl;
         assert(path_name(prank) == name);
         bit_vector& pe_bv = pe_v[prank-1];
         int_vector<>& pp_iv = pp_v[prank-1];
@@ -611,18 +619,20 @@ size_t XG::edge_rank_as_entity(int64_t id1, int64_t id2) {
 
 size_t XG::path_rank(const string& name) {
     // find the name in the csa
-    auto occs = locate(pn_csa, name);
+    string query = start_marker + name + end_marker;
+    auto occs = locate(pn_csa, query);
     if (occs.size() > 1) {
-        cerr << "multiple hits for " << name << endl;
+        cerr << "multiple hits for " << query << endl;
         assert(false);
     }
     //cerr << "path named " << name << " is at " << occs[0] << endl;
-    return pn_bv_rank(occs[0]);
+    return pn_bv_rank(occs[0])+1; // step past '#'
 }
 
 string XG::path_name(size_t rank) {
     size_t start = pn_bv_select(rank)+1; // step past '#'
     size_t end = rank == path_count ? pn_iv.size() : pn_bv_select(rank+1);
+    end -= 1;  // step before '$'
     string name; name.resize(end-start);
     for (size_t i = start; i < end; ++i) {
         name[i-start] = pn_iv[i];
