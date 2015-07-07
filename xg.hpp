@@ -23,6 +23,7 @@ using namespace vg;
 
 class XG {
 public:
+    
     XG(void) : start_marker('#'),
                end_marker('$'),
                seq_length(0),
@@ -38,6 +39,24 @@ public:
     size_t node_count;
     size_t edge_count;
     size_t path_count;
+
+    /*
+required API to integrate with vg
+    metadata:
+    index->name
+
+    kmers:
+    index->stored_kmer_sizes();
+    index->approx_size_of_kmer_matches(k);
+    index->get_kmer_positions(k, kmer_positions);
+    index->get_kmer_subgraph(c.first, *graph);
+
+    ranges:
+    index->get_range(first, last, *graph);
+    index->expand_context(*graph, context_step);
+    index->get_connected_nodes(*graph);
+    */
+    
     size_t id_to_rank(int64_t id);
     int64_t rank_to_id(size_t rank);
     size_t max_node_rank(void);
@@ -60,10 +79,17 @@ public:
     bool path_contains_entity(const string& name, size_t rank);
     bool has_edge(int64_t id1, int64_t id2);
     void neighborhood(int64_t id, size_t steps, Graph& g);
-    void range(int64_t rank1, int64_t rank2, Graph& g);
-    void region(string& path_name, int64_t start, int64_t stop, Graph& g);
+
+    void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g);
+    void get_path_range(string& path_name, int64_t start, int64_t stop, Graph& g);
+    void expand_context(Graph& g, size_t steps);
+    void get_connected_nodes(Graph& g);
+    void get_id_range(int64_t id1, int64_t id2, Graph& g);
+    void get_path(Graph& g, const string& name, int64_t start, int64_t end);
+    
     char start_marker;
     char end_marker;
+    
 private:
     // sequence/integer vector
     int_vector<> s_iv;

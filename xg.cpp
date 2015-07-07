@@ -681,43 +681,74 @@ map<string, Mapping> XG::node_mappings(int64_t id) {
 }
 
 void XG::neighborhood(int64_t id, size_t steps, Graph& g) {
-    map<int64_t, Node> nodes;
-    map<pair<int64_t, int64_t>, Edge> edges;
+    *g.add_node() = node(id);
+    expand_context(g, steps);
+}
+
+void XG::expand_context(Graph& g, size_t steps) {
+    map<int64_t, Node*> nodes;
+    map<pair<int64_t, int64_t>, Edge*> edges;
     set<int64_t> to_visit;
-    to_visit.insert(id);
+    // start with the nodes in the graph
+    for (size_t i = 0; i < g.node_size(); ++i) {
+        to_visit.insert(g.node(i).id());
+        // handles the single-node case: we should still get the paths
+        if (steps == 0) {
+            Node* np = g.mutable_node(i);
+            nodes[np->id()] = np;
+        }
+    }
+    // and expand
     for (size_t i = 0; i < steps; ++i) {
         set<int64_t> to_visit_next;
         for (auto id : to_visit) {
             // build out the graph
             // if we have nodes we haven't seeen
             if (nodes.find(id) != nodes.end()) continue;
-            nodes[id] = node(id);
+            Node* np = g.add_node();
+            nodes[id] = np;
+            *np = node(id);
             for (auto& edge : edges_from(id)) {
-                edges[make_pair(edge.from(), edge.to())] = edge;
+                Edge* ep = g.add_edge(); *ep = edge;
+                edges[make_pair(edge.from(), edge.to())] = ep;
                 to_visit_next.insert(edge.to());
             }
             for (auto& edge : edges_to(id)) {
-                edges[make_pair(edge.from(), edge.to())] = edge;
+                Edge* ep = g.add_edge(); *ep = edge;
+                edges[make_pair(edge.from(), edge.to())] = ep;
                 to_visit_next.insert(edge.from());
             }
         }
         to_visit = to_visit_next;
     }
+    // then add connected nodes
     for (auto& e : edges) {
         auto& edge = e.second;
-        *g.add_edge() = edge;
         // get missing nodes
-        if (nodes.find(edge.from()) == nodes.end()) {
-            nodes[edge.from()] = node(edge.from());
+        int64_t f = edge->from();
+        if (nodes.find(f) == nodes.end()) {
+            Node* np = g.add_node();
+            nodes[f] = np;
+            *np = node(f);
         }
-        if (nodes.find(edge.to()) == nodes.end()) {
-            nodes[edge.to()] = node(edge.to());
+        int64_t t = edge->to();
+        if (nodes.find(t) == nodes.end()) {
+            Node* np = g.add_node();
+            nodes[t] = np;
+            *np = node(t);
         }
     }
+    add_paths_to_graph(nodes, g);
+}
+
+    
+// if the graph ids partially ordered, this works no prob
+// otherwise... owch
+void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) {
     map<string, Path*> paths;
+    // store in graph
     for (auto& n : nodes) {
         auto& node = n.second;
-        *g.add_node() = node;
         for (auto& m : node_mappings(n.first)) {
             if (paths.find(m.first) == paths.end()) {
                 Path* p = g.add_path();
@@ -726,14 +757,51 @@ void XG::neighborhood(int64_t id, size_t steps, Graph& g) {
             }
             Path* path = paths[m.first];
             *path->add_mapping() = m.second;
-            //*g.add_path() = path;
         }
     }
-    // if the graph ids partially ordered, this works no prob
-    // build up paths now that we have the graph
+}
+
+void XG::get_id_range(int64_t id1, int64_t id2, Graph& g) {
+    for (auto i = id1; i <= id2; ++i) {
+        *g.add_node() = node(i);
+    }
+}
+
     /*
+
+void XG::expand_context(Graph& g, size_t steps) {
+    set<int64_t> ns;
+    for (size_t i = 0; i < g.node_size(); ++i) {
+        ns.insert(g.node(i).id());
+    }
+    for (int step = 0; step < steps; ++step) {
+        set<int64_t> ids;
+        for (size_t i = 0; i < g.edge_size(); ++i) {
+            int64_t f = edge->from();
+            if (ns.find(f) == ns.end()) {
+                ids.insert(f);
+                ns.insert(f);
+            }
+            int64_t t = edge->to();
+            if (ns.find(t) == ns.end()) {
+                ids.insert(t);
+                ns.insert(t);
+            }
+        }
+        for (auto id : ids) {
+            *g.add_node() = node(id);
+        }
+    }
+}
     */
 
+void XG::get_connected_nodes(Graph& g) {
+}
+
+void XG::get_path(Graph& g, const string& name, int64_t start, int64_t end) {
+    // what is the node at the start, and at the end
+    // for each one, get its neighborhood? ... to a number of steps?
+    // that would mean subjecting the path to neighborhood extension
 }
 
 Mapping new_mapping(const string& name, int64_t id) {
@@ -741,40 +809,5 @@ Mapping new_mapping(const string& name, int64_t id) {
     m.mutable_position()->set_node_id(id);
     return m;
 }
-
-// a graph composed of this node, it's edges, and its paths
-/*
-void VG::node_context(Node* node, VG& g) {
-    // add the node
-    g.add_node(*node);
-    // and its edges
-    vector<int64_t>& to = edges_to(node->id());
-    for (vector<int64_t>::iterator e = to.begin(); e != to.end(); ++e) {
-        g.add_edge(*get_edge(*e, node->id()));
-    }
-    vector<int64_t>& from = edges_from(node->id());
-    for (vector<int64_t>::iterator e = from.begin(); e != from.end(); ++e) {
-        g.add_edge(*get_edge(node->id(), *e));
-    }
-    // and its path members
-    if (paths.has_node_mapping(node)) {
-        auto& node_mappings = paths.get_node_mapping(node);
-        for (auto& i : node_mappings) {
-            g.paths.append_mapping(i.first, *i.second);
-        }
-    }
-}
-*/
-
-/*
-Path XG::path(string& name) {
-}
-Graph XG::neighborhood(int64_t rank, int32_t steps) {
-}
-Graph XG::range(int64_t rank1, int64_t rank2) {
-}
-Graph XG::region(string& path_name, int64_t start, int64_t stop) {
-}
-*/
 
 }
