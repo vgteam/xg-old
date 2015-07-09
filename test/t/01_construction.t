@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=..:$PATH # for xg
 
-plan tests 12
+plan tests 13
 
 is $(xg -v data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(xg -v data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
@@ -22,6 +22,7 @@ is $(xg -i z.idx -s 10331 | cut -f 2 -d\ ) "CAGCAGTGGAGCAGAAACAGAGGAGATGACACCATG
 is $(xg -i z.idx -f 10331 | md5sum | awk '{print $1}') "26c04eefc1a3bdcb97eb3be3d65743be" "graph can be queried to get from nodes"
 is $(xg -i z.idx -t 10331 | md5sum | awk '{print $1}') "1073816e90cdd7c1b5dacdcf0a980bb3" "graph can be queried to get to nodes"
 is $(xg -i z.idx -n 10331 -c 10 | md5sum | awk '{print $1}') "ccf3a8b68b188ffe86d867eb58dadbed" "graph can be queried to get node context"
+is $(xg -i z.idx -p z:500000-500500 | md5sum | awk '{print $1}') "9d1f5448af3a5342c37b8e5c9523a0de" "graph can be queried to get a region of a particular path"
 rm -f z.idx
 
 cat data/ll.vg data/z.vg | xg -v - 2>/dev/null

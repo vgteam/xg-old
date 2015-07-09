@@ -24,6 +24,7 @@ void help_main(char** argv) {
          << "    -s, --node-seq ID    provide node sequence for ID" << endl
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
+         << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
          << "    -h, --help           this text" << endl;
 }
 
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
     bool node_sequence = false;
     int context_steps = 0;
     bool node_context = false;
+    string target;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -59,11 +61,12 @@ int main(int argc, char** argv) {
                 {"edges-from", required_argument, 0, 'f'},
                 {"edges-to", required_argument, 0, 't'},
                 {"node-seq", required_argument, 0, 's'},
+                {"path", required_argument, 0, 'p'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -107,6 +110,10 @@ int main(int argc, char** argv) {
         case 's':
             node_id = atol(optarg);
             node_sequence = true;
+            break;
+
+        case 'p':
+            target = optarg;
             break;
             
         case 'h':
@@ -176,6 +183,19 @@ int main(int argc, char** argv) {
     if (node_context) {
         Graph g;
         graph->neighborhood(node_id, context_steps, g);
+        vector<Graph> gb = { g };
+        stream::write_buffered(cout, gb, 0);
+    }
+
+    if (!target.empty()) {
+        string name;
+        int64_t start, end;
+        Graph g;
+        parse_region(target, name, start, end);
+        graph->get_path_range(name, start, end, g);
+        if (context_steps > 0) {
+            graph->expand_context(g, context_steps);
+        }
         vector<Graph> gb = { g };
         stream::write_buffered(cout, gb, 0);
     }

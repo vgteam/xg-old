@@ -82,15 +82,18 @@ required API to integrate with vg
     bool path_contains_edge(const string& name, int64_t id1, int64_t id2);
     bool path_contains_entity(const string& name, size_t rank);
     void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g);
+    size_t node_occs_in_path(int64_t id, const string& name);
     size_t node_position_in_path(int64_t id, const string& name);
+    size_t node_rank_at_path_position(const string& name, size_t pos);
     int64_t node_at_path_position(const string& name, size_t pos);
 
     void neighborhood(int64_t id, size_t steps, Graph& g);
-    void get_path_range(string& path_name, int64_t start, int64_t stop, Graph& g);
+    //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
+    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g);
     void expand_context(Graph& g, size_t steps);
     void get_connected_nodes(Graph& g);
     void get_id_range(int64_t id1, int64_t id2, Graph& g);
-    void get_path(Graph& g, const string& name, int64_t start, int64_t end);
+
     
     char start_marker;
     char end_marker;
@@ -143,8 +146,10 @@ private:
     int_vector<> pi_iv; // path ids by rank in the path names
     // probably these should get compressed, for when we have whole genomes with many chromosomes
     // the growth in required memory is quadratic but the stored matrix is sparse
-    vector<bit_vector> pe_v; // path entity membership (ordered by rank in pn_iv
-    vector<int_vector<>> pi_v; // path node ids
+    vector<sd_vector<>> pe_v; // path entity membership
+    //vector<wt_int<>> pr_v;
+    //vector<int_vector<>> pi_v; // path node ids
+    vector<wt_int<>> pi_wt_v; // path node ranks (searchable)
     vector<int_vector<>> pp_v; // path relative positions to each node
     vector<bit_vector> po_v; // used to look up the relative positions of nodes to the path
     vector<rank_support_v<1> > po_v_rank;
@@ -157,6 +162,7 @@ private:
 };
 
 Mapping new_mapping(const string& name, int64_t id);
+void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 
 }
 

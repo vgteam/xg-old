@@ -72,12 +72,12 @@ void XG::load(istream& in) {
     pi_iv.load(in);
     sdsl::read_member(path_count, in);
     for (size_t i = 0; i < path_count; ++i) {
-        bit_vector bv;
-        bv.load(in);
-        pe_v.push_back(bv);
-        int_vector<> idv;
-        idv.load(in);
-        pi_v.push_back(idv);
+        sd_vector<> cbv;
+        cbv.load(in);
+        pe_v.push_back(cbv);
+        wt_int<> wti;
+        wti.load(in);
+        pi_wt_v.push_back(wti);
         int_vector<> iv;
         iv.load(in);
         pp_v.push_back(iv);
@@ -134,7 +134,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += sdsl::write_member(pe_v.size(), out, child, "path_count");    
     for (size_t i = 0; i < pe_v.size(); ++i) {
         written += pe_v[i].serialize(out, child, "path_membership_" + path_name(i+1));
-        written += pi_v[i].serialize(out, child, "path_node_ids_" + path_name(i+1));
+        written += pi_wt_v[i].serialize(out, child, "path_node_ids_" + path_name(i+1));
         written += pp_v[i].serialize(out, child, "path_node_offsets_" + path_name(i+1));
         written += po_v[i].serialize(out, child, "path_node_starts_" + path_name(i+1));
         written += po_v_rank[i].serialize(out, child, "path_node_starts_rank_" + path_name(i+1));
@@ -229,7 +229,6 @@ void XG::from_vg(istream& in) {
     // because we need to ensure full coverage of node space
 
     util::bit_compress(i_iv);
-    enc_vector<> i_civ(i_iv);
     construct_im(i_wt, i_iv);
 
     cerr << "storing forward edges and adjacency table" << endl;
@@ -323,14 +322,14 @@ void XG::from_vg(istream& in) {
         //cerr << path_name << endl;
         const vector<int64_t>& path = pathpair.second;
         path_names += start_marker + path_name + end_marker;
-        pe_v.emplace_back();
         // path members (of nodes and edges ordered as per f_bv)
-        bit_vector& pe_bv = pe_v.back();
-        util::assign(pe_bv, bit_vector(entity_count));
+        bit_vector pe_bv(entity_count);
+        //util::assign(pe_cbv, bit_vector(entity_count));
+        //util::assign(pe_cbv, bit_vector(entity_count));
         // node ids, the literal path
-        pi_v.emplace_back();
-        int_vector<>& pi_iv = pi_v.back();
-        util::assign(pi_iv, int_vector<>(path.size()));
+        int_vector<> pi_iv(path.size());
+        //int_vector<>& pi_iv = pi_v.back();
+        //util::assign(pi_iv, int_vector<>(path.size()));
         pp_v.emplace_back();
         // node positions in path
         int_vector<>& pp_iv = pp_v.back();
@@ -371,7 +370,16 @@ void XG::from_vg(istream& in) {
                 }
             }
         }
+        // compress path membership vectors
+        pe_v.emplace_back();
+        sd_vector<>& pe_cbv = pe_v.back();
+        util::assign(pe_cbv, sd_vector<>(pe_bv));
+        // handle entity lookup structure (wavelet tree)
         util::bit_compress(pi_iv);
+        pi_wt_v.emplace_back();
+        wt_int<>& pi_wt = pi_wt_v.back();
+        construct_im(pi_wt, pi_iv);
+        // bit compress the positional offset info
         util::bit_compress(pp_iv);
     }
 
@@ -461,7 +469,7 @@ void XG::from_vg(istream& in) {
     cerr << "|t_bv| = " << size_in_mega_bytes(t_bv) << endl;
 
     //cerr << "|s_civ| = " << size_in_mega_bytes(s_civ) << endl;
-    cerr << "|i_civ| = " << size_in_mega_bytes(i_civ) << endl;
+    cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
     //cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
     //cerr << "|t_civ| = " << size_in_mega_bytes(t_civ) << endl;
@@ -480,11 +488,11 @@ void XG::from_vg(istream& in) {
     paths_mb_size += size_in_mega_bytes(pn_bv_rank);
     paths_mb_size += size_in_mega_bytes(pn_bv_select);
     paths_mb_size += size_in_mega_bytes(pi_iv);
-    for (auto& bv : pe_v) {
-        paths_mb_size += size_in_mega_bytes(bv);
+    for (auto& cbv : pe_v) {
+        paths_mb_size += size_in_mega_bytes(cbv);
     }
-    for (auto& iv : pi_v) {
-        paths_mb_size += size_in_mega_bytes(iv);
+    for (auto& wt : pi_wt_v) {
+        paths_mb_size += size_in_mega_bytes(wt);
     }
     for (auto& iv : pp_v) {
         paths_mb_size += size_in_mega_bytes(iv);
@@ -513,7 +521,7 @@ void XG::from_vg(istream& in) {
         //+ size_in_mega_bytes(s_bv)
         + size_in_mega_bytes(f_bv)
         + size_in_mega_bytes(t_bv)
-        + size_in_mega_bytes(i_civ)
+        + size_in_mega_bytes(i_iv)
         + size_in_mega_bytes(i_wt)
         + size_in_mega_bytes(s_cbv)
         + paths_mb_size
@@ -537,8 +545,8 @@ void XG::from_vg(istream& in) {
     for (auto& iv : pp_v) {
         cerr << iv << endl;
     }
-    for (auto& iv : pi_v) {
-        cerr << iv << endl;
+    for (auto& wt : pi_wt_v) {
+        cerr << wt << endl;
     }
     for (auto& bv : po_v) {
         cerr << bv << endl;
@@ -587,9 +595,9 @@ void XG::from_vg(istream& in) {
         //cerr << j << endl;
         if (f_bv[j] == 1) continue;
         // from id == rank
-        size_t fid = i_civ[f_bv_rank(j)-1];
+        size_t fid = i_iv[f_bv_rank(j)-1];
         // to id == f_cbv[j]
-        size_t tid = i_civ[f_iv[j]-1];
+        size_t tid = i_iv[f_iv[j]-1];
         //cerr << fid << " " << tid << endl;
         if (from_to[fid].count(tid) == 0) {
             cerr << "could not find edge (f) " << fid << " -> " << tid << endl;
@@ -602,9 +610,9 @@ void XG::from_vg(istream& in) {
         //cerr << j << endl;
         if (t_bv[j] == 1) continue;
         // from id == rank
-        size_t tid = i_civ[t_bv_rank(j)-1];
+        size_t tid = i_iv[t_bv_rank(j)-1];
         // to id == f_cbv[j]
-        size_t fid = i_civ[t_iv[j]-1];
+        size_t fid = i_iv[t_iv[j]-1];
         //cerr << tid << " " << fid << endl;
         if (to_from[tid].count(fid) == 0) {
             cerr << "could not find edge (t) " << fid << " -> " << tid << endl;
@@ -619,7 +627,7 @@ void XG::from_vg(istream& in) {
         size_t prank = path_rank(name);
         //cerr << path_name(prank) << endl;
         assert(path_name(prank) == name);
-        bit_vector& pe_bv = pe_v[prank-1];
+        sd_vector<>& pe_bv = pe_v[prank-1];
         int_vector<>& pp_iv = pp_v[prank-1];
         // check each entity in the nodes is present
         // and check node reported at the positions in it
@@ -627,6 +635,8 @@ void XG::from_vg(istream& in) {
         for (auto& id : path) {
             assert(pe_bv[node_rank_as_entity(id)-1]);
             Node n = node(id);
+            //cerr << id << " in " << name << " at " << node_position_in_path(id, name) << " == " << pos << endl;
+            assert(node_position_in_path(id, name) == pos);
             for (size_t k = 0; k < n.sequence().size(); ++k) {
                 //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
                 assert(id == node_at_path_position(name, pos+k));
@@ -933,35 +943,64 @@ void XG::expand_context(Graph& g, size_t steps) {
 }
     */
 
+/*
 void XG::get_connected_nodes(Graph& g) {
 }
+*/
 
-void XG::get_path_range(string& path_name, int64_t start, int64_t stop, Graph& g) {
+//void XG::for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
+void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) {
     // what is the node at the start, and at the end
-    // for each one, get its neighborhood? ... to a number of steps?
-    // that would mean subjecting the path to neighborhood extension
+    size_t p = path_rank(name)-1;
+    size_t pr1 = po_v_rank[p](start+1)-1;
+    size_t pr2 = po_v_rank[p](stop+1)-1;
+    set<int64_t> nodes;
+    set<pair<int64_t, int64_t> > edges;
+    auto& pi_wt = pi_wt_v[p];
+    for (size_t i = pr1; i < pr2; ++i) {
+        int64_t id = rank_to_id(pi_wt[i]);
+        nodes.insert(id);
+        for (auto& e : edges_from(id)) {
+            edges.insert(make_pair(e.from(), e.to()));
+        }
+        for (auto& e : edges_to(id)) {
+            edges.insert(make_pair(e.from(), e.to()));
+        }
+    }
+    for (auto& n : nodes) {
+        *g.add_node() = node(n);
+    }
+    for (auto& e : edges) {
+        Edge edge;
+        edge.set_from(e.first);
+        edge.set_to(e.second);
+        *g.add_edge() = edge;
+    }
+}
+
+size_t XG::node_occs_in_path(int64_t id, const string& name) {
+    size_t p = path_rank(name)-1;
+    auto& pi_wt = pi_wt_v[p];
+    return pi_wt.rank(pi_wt.size(), id_to_rank(id));
 }
 
 size_t XG::node_position_in_path(int64_t id, const string& name) {
-    // take the rank in the entity vector thing
-    // then use that to look up the start position
+    if (node_occs_in_path(id, name) > 1) {
+        // not handled yet...
+        cerr << "warning: path " << name << " contains a loop" << endl;
+    }
+    size_t p = path_rank(name)-1;
+    auto& pi_wt = pi_wt_v[p];
+    return pp_v[p][pi_wt.select(1, id_to_rank(id))];
+}
+
+size_t XG::node_rank_at_path_position(const string& name, size_t pos) {
+    size_t p = path_rank(name)-1;
+    return pi_wt_v[p][po_v_rank[p](pos+1)-1];
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) {
-    // get the path rank
-    //cerr << name << endl;
-    size_t p = path_rank(name)-1;
-    //cerr << "path rank " << p << endl;
-    // get the rank at position
-    //cerr << "pos = " << pos << endl;
-    //cerr << po_v[p].size() << endl;
-    
-    //cerr << po_v[p] << endl;
-    //rank_support_v<1> po_bv_rank(&po_v[p]);
-    //cerr << " rank = " << po_bv_rank(pos+1) << endl;
-    //cerr << " id = " << pi_v[p][po_v_rank[p](pos+1)-1] << endl;
-    //return pi_v[p][po_v_rank[p](pos+1)-1];
-    return rank_to_id(pi_v[p][po_v_rank[p](pos+1)-1]);
+    return rank_to_id(node_rank_at_path_position(name, pos));
 }
 
 Mapping new_mapping(const string& name, int64_t id) {
@@ -969,5 +1008,26 @@ Mapping new_mapping(const string& name, int64_t id) {
     m.mutable_position()->set_node_id(id);
     return m;
 }
+
+void parse_region(const string& target, string& name, int64_t& start, int64_t& end) {
+    start = -1;
+    end = -1;
+    size_t foundFirstColon = target.find(":");
+    // we only have a single string, use the whole sequence as the target
+    if (foundFirstColon == string::npos) {
+        name = target;
+    } else {
+        name = target.substr(0, foundFirstColon);
+	    size_t foundRangeDash = target.find("-", foundFirstColon);
+        if (foundRangeDash == string::npos) {
+            start = atoi(target.substr(foundFirstColon + 1).c_str());
+            end = start;
+        } else {
+            start = atoi(target.substr(foundFirstColon + 1, foundRangeDash - foundRangeDash - 1).c_str());
+            end = atoi(target.substr(foundRangeDash + 1).c_str());
+        }
+    }
+}
+
 
 }
