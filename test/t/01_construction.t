@@ -5,9 +5,10 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=..:$PATH # for xg
 
-plan tests 11
+plan tests 12
 
 is $(xg -v data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
+is $(xg -v data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
 is $(xg -v data/l+.vg 2>&1 | grep ok | wc -l) 1 "node ids need not start at 1"
 is $(xg -v data/z.vg 2>&1 | grep ok | wc -l) 1 "a 1mb graph verifies"
 xg -v data/z.vg -o data/z.vg.idx 2>/dev/null

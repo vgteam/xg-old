@@ -141,8 +141,11 @@ private:
     rank_support_v<1> pn_bv_rank;
     bit_vector::select_1_type pn_bv_select;
     int_vector<> pi_iv; // path ids by rank in the path names
+    // probably these should get compressed, for when we have whole genomes with many chromosomes
+    // the growth in required memory is quadratic but the stored matrix is sparse
     vector<bit_vector> pe_v; // path entity membership (ordered by rank in pn_iv
-    vector<int_vector<>> pp_v; // path relative positions to each entity
+    vector<int_vector<>> pi_v; // path node ids
+    vector<int_vector<>> pp_v; // path relative positions to each node
     vector<bit_vector> po_v; // used to look up the relative positions of nodes to the path
     vector<rank_support_v<1> > po_v_rank;
     vector<bit_vector::select_1_type> po_v_select;

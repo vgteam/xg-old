@@ -75,6 +75,9 @@ void XG::load(istream& in) {
         bit_vector bv;
         bv.load(in);
         pe_v.push_back(bv);
+        int_vector<> idv;
+        idv.load(in);
+        pi_v.push_back(idv);
         int_vector<> iv;
         iv.load(in);
         pp_v.push_back(iv);
@@ -131,6 +134,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += sdsl::write_member(pe_v.size(), out, child, "path_count");    
     for (size_t i = 0; i < pe_v.size(); ++i) {
         written += pe_v[i].serialize(out, child, "path_membership_" + path_name(i+1));
+        written += pi_v[i].serialize(out, child, "path_node_ids_" + path_name(i+1));
         written += pp_v[i].serialize(out, child, "path_node_offsets_" + path_name(i+1));
         written += po_v[i].serialize(out, child, "path_node_starts_" + path_name(i+1));
         written += po_v_rank[i].serialize(out, child, "path_node_starts_rank_" + path_name(i+1));
@@ -323,6 +327,10 @@ void XG::from_vg(istream& in) {
         // path members (of nodes and edges ordered as per f_bv)
         bit_vector& pe_bv = pe_v.back();
         util::assign(pe_bv, bit_vector(entity_count));
+        // node ids, the literal path
+        pi_v.emplace_back();
+        int_vector<>& pi_iv = pi_v.back();
+        util::assign(pi_iv, int_vector<>(path.size()));
         pp_v.emplace_back();
         // node positions in path
         int_vector<>& pp_iv = pp_v.back();
@@ -335,6 +343,7 @@ void XG::from_vg(istream& in) {
         for (size_t i = 0; i < path.size(); ++i) {
             auto& node_id = path[i];
             path_length += node_label[node_id].size();
+            pi_iv[i] = id_to_rank(node_id);
         }
         // make the bitvector for path offsets
         po_v.emplace_back();
@@ -362,14 +371,20 @@ void XG::from_vg(istream& in) {
                 }
             }
         }
+        util::bit_compress(pi_iv);
         util::bit_compress(pp_iv);
+    }
+
+    // do this here so we have the correct pointers
+    // if we do it as we iterate through the paths the pointer kept by sdsl is invalidated
+    for (auto& po_bv : po_v) {
         // now make rank and select supports for path position finding
         po_v_rank.emplace_back();
         rank_support_v<1>& po_bv_rank = po_v_rank.back();
         util::assign(po_bv_rank, rank_support_v<1>(&po_bv));
         po_v_select.emplace_back();
         bit_vector::select_1_type& po_bv_select = po_v_select.back();
-        util::assign(po_bv_select, bit_vector::select_1_type(&po_bv));        
+        util::assign(po_bv_select, bit_vector::select_1_type(&po_bv));
     }
     //cerr << path_names << endl;
 
@@ -468,6 +483,9 @@ void XG::from_vg(istream& in) {
     for (auto& bv : pe_v) {
         paths_mb_size += size_in_mega_bytes(bv);
     }
+    for (auto& iv : pi_v) {
+        paths_mb_size += size_in_mega_bytes(iv);
+    }
     for (auto& iv : pp_v) {
         paths_mb_size += size_in_mega_bytes(iv);
     }
@@ -519,8 +537,14 @@ void XG::from_vg(istream& in) {
     for (auto& iv : pp_v) {
         cerr << iv << endl;
     }
+    for (auto& iv : pi_v) {
+        cerr << iv << endl;
+    }
+    for (auto& bv : po_v) {
+        cerr << bv << endl;
+    }
     cerr << ep_bv << endl;
-    cerr << ep_civ << endl;
+    cerr << ep_iv << endl;
     */
 
     cerr << "validating graph sequence" << endl;
@@ -598,8 +622,16 @@ void XG::from_vg(istream& in) {
         bit_vector& pe_bv = pe_v[prank-1];
         int_vector<>& pp_iv = pp_v[prank-1];
         // check each entity in the nodes is present
+        // and check node reported at the positions in it
+        size_t pos = 0;
         for (auto& id : path) {
             assert(pe_bv[node_rank_as_entity(id)-1]);
+            Node n = node(id);
+            for (size_t k = 0; k < n.sequence().size(); ++k) {
+                //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
+                assert(id == node_at_path_position(name, pos+k));
+            }
+            pos += n.sequence().size();
         }
         //cerr << path_name << " rank = " << prank << endl;
         // check membership now for each entity in the path
@@ -913,15 +945,23 @@ void XG::get_path_range(string& path_name, int64_t start, int64_t stop, Graph& g
 size_t XG::node_position_in_path(int64_t id, const string& name) {
     // take the rank in the entity vector thing
     // then use that to look up the start position
-    
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) {
     // get the path rank
-    size_t p = path_rank(name);
-    //po_v[p];
+    //cerr << name << endl;
+    size_t p = path_rank(name)-1;
+    //cerr << "path rank " << p << endl;
     // get the rank at position
-    return rank_to_id(pp_v[p][po_v_rank[p](pos)]);
+    //cerr << "pos = " << pos << endl;
+    //cerr << po_v[p].size() << endl;
+    
+    //cerr << po_v[p] << endl;
+    //rank_support_v<1> po_bv_rank(&po_v[p]);
+    //cerr << " rank = " << po_bv_rank(pos+1) << endl;
+    //cerr << " id = " << pi_v[p][po_v_rank[p](pos+1)-1] << endl;
+    //return pi_v[p][po_v_rank[p](pos+1)-1];
+    return rank_to_id(pi_v[p][po_v_rank[p](pos+1)-1]);
 }
 
 Mapping new_mapping(const string& name, int64_t id) {
