@@ -39,6 +39,11 @@ XG::XG(istream& in) {
 
 void XG::load(istream& in) {
 
+    if (!in.good()) {
+        cerr << "[xg] error: index does not exist!" << endl;
+        exit(1);
+    }
+
     sdsl::read_member(seq_length, in);
     sdsl::read_member(node_count, in);
     sdsl::read_member(edge_count, in);
@@ -84,11 +89,13 @@ void XG::load(istream& in) {
         bit_vector po_bv;
         po_bv.load(in);
         po_v.push_back(po_bv);
+    }
+    for (size_t i = 0; i < path_count; ++i) {
         rank_support_v<1> po_bv_rank;
-        po_bv_rank.load(in, &po_v.back());
+        po_bv_rank.load(in, &po_v.at(i));
         po_v_rank.push_back(po_bv_rank);
         bit_vector::select_1_type po_bv_select;
-        po_bv_select.load(in, &po_v.back());
+        po_bv_select.load(in, &po_v.at(i));
         po_v_select.push_back(po_bv_select);
     }
     ep_iv.load(in);
@@ -137,6 +144,8 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
         written += pi_wt_v[i].serialize(out, child, "path_node_ids_" + path_name(i+1));
         written += pp_v[i].serialize(out, child, "path_node_offsets_" + path_name(i+1));
         written += po_v[i].serialize(out, child, "path_node_starts_" + path_name(i+1));
+    }
+    for (size_t i = 0; i < pe_v.size(); ++i) {
         written += po_v_rank[i].serialize(out, child, "path_node_starts_rank_" + path_name(i+1));
         written += po_v_select[i].serialize(out, child, "path_node_starts_select_" + path_name(i+1));
     }
@@ -710,8 +719,8 @@ size_t XG::max_node_rank(void) {
 }
 
 size_t XG::max_path_rank(void) {
-    cerr << pn_bv << endl;
-    cerr << "..." << pn_bv_rank(pn_bv.size()) << endl;
+    //cerr << pn_bv << endl;
+    //cerr << "..." << pn_bv_rank(pn_bv.size()) << endl;
     return pn_bv_rank(pn_bv.size());
 }
 
@@ -915,49 +924,30 @@ void XG::get_id_range(int64_t id1, int64_t id2, Graph& g) {
     }
 }
 
-    /*
-
-void XG::expand_context(Graph& g, size_t steps) {
-    set<int64_t> ns;
-    for (size_t i = 0; i < g.node_size(); ++i) {
-        ns.insert(g.node(i).id());
-    }
-    for (int step = 0; step < steps; ++step) {
-        set<int64_t> ids;
-        for (size_t i = 0; i < g.edge_size(); ++i) {
-            int64_t f = edge->from();
-            if (ns.find(f) == ns.end()) {
-                ids.insert(f);
-                ns.insert(f);
-            }
-            int64_t t = edge->to();
-            if (ns.find(t) == ns.end()) {
-                ids.insert(t);
-                ns.insert(t);
-            }
-        }
-        for (auto id : ids) {
-            *g.add_node() = node(id);
-        }
-    }
-}
-    */
-
 /*
 void XG::get_connected_nodes(Graph& g) {
 }
 */
 
-//void XG::for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
+size_t XG::path_length(const string& name) {
+    size_t p = path_rank(name)-1;
+    return po_v[p].size();
+}
+
+// TODO, include paths
 void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) {
     // what is the node at the start, and at the end
     size_t p = path_rank(name)-1;
+    size_t plen = po_v[p].size();
+    if (start > plen) return; // no overlap with path
     size_t pr1 = po_v_rank[p](start+1)-1;
+    // careful not to exceed the path length
+    if (stop >= plen) stop = plen-1;
     size_t pr2 = po_v_rank[p](stop+1)-1;
     set<int64_t> nodes;
     set<pair<int64_t, int64_t> > edges;
     auto& pi_wt = pi_wt_v[p];
-    for (size_t i = pr1; i < pr2; ++i) {
+    for (size_t i = pr1; i <= pr2; ++i) {
         int64_t id = rank_to_id(pi_wt[i]);
         nodes.insert(id);
         for (auto& e : edges_from(id)) {
@@ -969,6 +959,18 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) {
     }
     for (auto& n : nodes) {
         *g.add_node() = node(n);
+    }
+    map<string, Path*> paths;
+    for (auto& n : nodes) {
+        for (auto& m : node_mappings(n)) {
+            if (paths.find(m.first) == paths.end()) {
+                Path* p = g.add_path();
+                paths[m.first] = p;
+                p->set_name(m.first);
+            }
+            Path* path = paths[m.first];
+            *path->add_mapping() = m.second;
+        }
     }
     for (auto& e : edges) {
         Edge edge;

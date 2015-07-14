@@ -45,12 +45,6 @@ required API to integrate with vg
     metadata:
     index->name
 
-    kmers:
-    index->stored_kmer_sizes();
-    index->approx_size_of_kmer_matches(k);
-    index->get_kmer_positions(k, kmer_positions);
-    index->get_kmer_subgraph(c.first, *graph);
-
     ranges:
     index->get_range(first, last, *graph);
     index->expand_context(*graph, context_step);
@@ -86,6 +80,7 @@ required API to integrate with vg
     size_t node_position_in_path(int64_t id, const string& name);
     size_t node_rank_at_path_position(const string& name, size_t pos);
     int64_t node_at_path_position(const string& name, size_t pos);
+    size_t path_length(const string& name);
 
     void neighborhood(int64_t id, size_t steps, Graph& g);
     //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
