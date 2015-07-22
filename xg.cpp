@@ -159,7 +159,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     
 }
 
-void XG::from_vg(istream& in) {
+void XG::from_vg(istream& in, bool print_graph) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -536,33 +536,33 @@ void XG::from_vg(istream& in) {
         + paths_mb_size
         ) << endl;
 
-    /*
-    cerr << s_iv << endl;
-    for (int i = 0; i < s_iv.size(); ++i) {
-        cerr << revdna3bit(s_iv[i]);
-    } cerr << endl;
-    cerr << s_bv << endl;
-    cerr << f_iv << endl;
-    cerr << f_bv << endl;
-    cerr << t_iv << endl;
-    cerr << t_bv << endl;
-    cerr << i_iv << endl;
-    cerr << "paths" << endl;
-    for (auto& bv : pe_v) {
-        cerr << bv << endl;
+    if (print_graph) {
+        cerr << s_iv << endl;
+        for (int i = 0; i < s_iv.size(); ++i) {
+            cerr << revdna3bit(s_iv[i]);
+        } cerr << endl;
+        cerr << s_bv << endl;
+        cerr << i_iv << endl;
+        cerr << f_iv << endl;
+        cerr << f_bv << endl;
+        cerr << t_iv << endl;
+        cerr << t_bv << endl;
+        cerr << "paths" << endl;
+        for (auto& bv : pe_v) {
+            cerr << bv << endl;
+        }
+        for (auto& iv : pp_v) {
+            cerr << iv << endl;
+        }
+        for (auto& wt : pi_wt_v) {
+            cerr << wt << endl;
+        }
+        for (auto& bv : po_v) {
+            cerr << bv << endl;
+        }
+        cerr << ep_bv << endl;
+        cerr << ep_iv << endl;
     }
-    for (auto& iv : pp_v) {
-        cerr << iv << endl;
-    }
-    for (auto& wt : pi_wt_v) {
-        cerr << wt << endl;
-    }
-    for (auto& bv : po_v) {
-        cerr << bv << endl;
-    }
-    cerr << ep_bv << endl;
-    cerr << ep_iv << endl;
-    */
 
     cerr << "validating graph sequence" << endl;
     int max_id = s_cbv_rank(s_cbv.size());
