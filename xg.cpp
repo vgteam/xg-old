@@ -13,8 +13,10 @@ int dna3bit(char c) {
         return 2;
     case 'G':
         return 3;
-    default:
+    case 'N':
         return 4;
+    default:
+        return 5;
     }
 }
 
@@ -28,6 +30,8 @@ char revdna3bit(int i) {
         return 'C';
     case 3:
         return 'G';
+    case 4:
+        return 'N';
     default:
         return 'N';
     }
