@@ -25,6 +25,7 @@ void help_main(char** argv) {
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
+         << "    -D, --debug          show debugging output" << endl
          << "    -h, --help           this text" << endl;
 }
 
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
     int context_steps = 0;
     bool node_context = false;
     string target;
+    bool print_graph = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -62,11 +64,12 @@ int main(int argc, char** argv) {
                 {"edges-to", required_argument, 0, 't'},
                 {"node-seq", required_argument, 0, 's'},
                 {"path", required_argument, 0, 'p'},
+                {"debug", no_argument, 0, 'D'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:D",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -82,6 +85,10 @@ int main(int argc, char** argv) {
 
         case 'o':
             out_name = optarg;
+            break;
+
+        case 'D':
+            print_graph = true;
             break;
 
         case 'i':
@@ -132,12 +139,12 @@ int main(int argc, char** argv) {
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
         graph = new XG;
-        graph->from_vg(std::cin);
+        graph->from_vg(std::cin, print_graph);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
         graph = new XG;
-        graph->from_vg(in);
+        graph->from_vg(in, print_graph);
     }
 
     if (out_name.size()) {

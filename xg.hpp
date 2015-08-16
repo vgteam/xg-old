@@ -21,6 +21,15 @@ using namespace std;
 using namespace sdsl;
 using namespace vg;
 
+class Traversal {
+public:
+    int64_t id;
+    bool rev;
+    Traversal(int64_t i, bool r) : id(i), rev(r) { }
+};
+
+class XGPath;
+
 class XG {
 public:
     
@@ -34,7 +43,9 @@ public:
     XG(istream& in);
     void from_vg(istream& in, bool print_graph = false);
     void load(istream& in);
-    size_t serialize(std::ostream& out, sdsl::structure_tree_node* v = NULL, std::string name = "");
+    size_t serialize(std::ostream& out,
+                     sdsl::structure_tree_node* v = NULL,
+                     std::string name = "");
     size_t seq_length;
     size_t node_count;
     size_t edge_count;
@@ -78,7 +89,6 @@ required API to integrate with vg
     void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g);
     size_t node_occs_in_path(int64_t id, const string& name);
     size_t node_position_in_path(int64_t id, const string& name);
-    size_t node_rank_at_path_position(const string& name, size_t pos);
     int64_t node_at_path_position(const string& name, size_t pos);
     size_t path_length(const string& name);
 
@@ -116,12 +126,14 @@ private:
     bit_vector f_bv;
     rank_support_v<1> f_bv_rank;
     bit_vector::select_1_type f_bv_select;
+    bit_vector f_from_start_bv;
 
     // and the same data in the reverse direction
     int_vector<> t_iv;
     bit_vector t_bv;
     rank_support_v<1> t_bv_rank;
     bit_vector::select_1_type t_bv_select;
+    bit_vector t_to_end_bv;
 
     // edge table, allows o(1) determination of edge existence
     int_vector<> e_iv;
@@ -139,22 +151,42 @@ private:
     rank_support_v<1> pn_bv_rank;
     bit_vector::select_1_type pn_bv_select;
     int_vector<> pi_iv; // path ids by rank in the path names
+
     // probably these should get compressed, for when we have whole genomes with many chromosomes
     // the growth in required memory is quadratic but the stored matrix is sparse
-    vector<sd_vector<>> pe_v; // path entity membership
-    //vector<wt_int<>> pr_v;
-    //vector<int_vector<>> pi_v; // path node ids
-    vector<wt_int<>> pi_wt_v; // path node ranks (searchable)
-    vector<int_vector<>> pp_v; // path relative positions to each node
-    vector<bit_vector> po_v; // used to look up the relative positions of nodes to the path
-    vector<rank_support_v<1> > po_v_rank;
-    vector<bit_vector::select_1_type> po_v_select;
+    vector<XGPath*> paths; // path entity membership
+
     // entity->path membership
     int_vector<> ep_iv;
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
 };
+
+class XGPath {
+public:
+    XGPath(void) : member_count(0) { }
+    ~XGPath(void) { }
+    XGPath(const string& path_name,
+           const vector<Traversal>& path,
+           size_t entity_count,
+           XG& graph,
+           map<int64_t, string>& node_label);
+    string name;
+    size_t member_count;
+    sd_vector<> members;
+    wt_int<> ids;
+    sd_vector<> directions; // forward or backward through nodes
+    int_vector<> positions;
+    bit_vector offsets;
+    rank_support_v<1> offsets_rank;
+    bit_vector::select_1_type offsets_select;
+    void load(istream& in);
+    size_t serialize(std::ostream& out,
+                     sdsl::structure_tree_node* v = NULL,
+                     std::string name = "");
+};
+
 
 Mapping new_mapping(const string& name, int64_t id);
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
