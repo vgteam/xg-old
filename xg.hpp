@@ -52,17 +52,6 @@ public:
     size_t edge_count;
     size_t path_count;
 
-    /*
-required API to integrate with vg
-    metadata:
-    index->name
-
-    ranges:
-    index->get_range(first, last, *graph);
-    index->expand_context(*graph, context_step);
-    index->get_connected_nodes(*graph);
-    */
-    
     size_t id_to_rank(int64_t id);
     int64_t rank_to_id(size_t rank);
     size_t max_node_rank(void);
