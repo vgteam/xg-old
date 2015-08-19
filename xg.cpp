@@ -63,11 +63,15 @@ void XG::load(istream& in) {
     f_bv.load(in);
     f_bv_rank.load(in, &f_bv);
     f_bv_select.load(in, &f_bv);
+    f_from_start_cbv.load(in);
+    f_to_end_cbv.load(in);
 
     t_iv.load(in);
     t_bv.load(in);
     t_bv_rank.load(in, &t_bv);
     t_bv_select.load(in, &t_bv);
+    t_to_end_cbv.load(in);
+    t_from_start_cbv.load(in);
 
     pn_iv.load(in);
     pn_csa.load(in);
@@ -208,14 +212,18 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += s_cbv_select.serialize(out, child, "seq_node_starts_select");
 
     written += f_iv.serialize(out, child, "from_vector");
-    written += f_bv.serialize(out, child, "from_node_starts");
-    written += f_bv_rank.serialize(out, child, "from_node_starts_rank");
-    written += f_bv_select.serialize(out, child, "from_node_starts_select");
+    written += f_bv.serialize(out, child, "from_node");
+    written += f_bv_rank.serialize(out, child, "from_node_rank");
+    written += f_bv_select.serialize(out, child, "from_node_select");
+    written += f_from_start_cbv.serialize(out, child, "from_is_from_start");
+    written += f_to_end_cbv.serialize(out, child, "from_is_to_end");
     
     written += t_iv.serialize(out, child, "to_vector");
-    written += t_bv.serialize(out, child, "to_node_starts");
-    written += t_bv_rank.serialize(out, child, "to_node_starts_rank");
-    written += t_bv_select.serialize(out, child, "to_node_starts_select");
+    written += t_bv.serialize(out, child, "to_node");
+    written += t_bv_rank.serialize(out, child, "to_node_rank");
+    written += t_bv_select.serialize(out, child, "to_node_select");
+    written += t_to_end_cbv.serialize(out, child, "to_is_to_end");
+    written += t_from_start_cbv.serialize(out, child, "to_is_from_start");
 
     written += pn_iv.serialize(out, child, "path_names");
     written += pn_csa.serialize(out, child, "path_names_csa");
@@ -242,8 +250,9 @@ void XG::from_vg(istream& in, bool print_graph) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
-    map<int64_t, set<int64_t> > from_to;
-    map<int64_t, set<int64_t> > to_from;
+    // need to store node sides
+    map<Side, set<Side> > from_to;
+    map<Side, set<Side> > to_from;
     map<string, vector<Traversal> > path_nodes;
 
     // we can always resize smaller, but not easily extend
@@ -262,10 +271,11 @@ void XG::from_vg(istream& in, bool print_graph) {
         }
         for (int i = 0; i < graph.edge_size(); ++i) {
             const Edge& e = graph.edge(i);
-            if (from_to.find(e.from()) == from_to.end() || from_to[e.from()].count(e.to()) ==0) {
+            if (from_to.find(Side(e.from(), e.from_start())) == from_to.end()
+                || from_to[Side(e.from(), e.from_start())].count(Side(e.to(), e.to_end())) == 0) {
                 ++edge_count;
-                from_to[e.from()].insert(e.to());
-                to_from[e.to()].insert(e.from());
+                from_to[Side(e.from(), e.from_start())].insert(Side(e.to(), e.to_end()));
+                to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
             }
         }
         for (int i = 0; i < graph.path_size(); ++i) {
@@ -285,7 +295,8 @@ void XG::from_vg(istream& in, bool print_graph) {
     cerr << "graph has " << seq_length << "bp in sequence, "
          << node_count << " nodes, "
          << edge_count << " edges, and "
-         << path_count << " paths" << endl;
+         << path_count << " paths "
+         << "for a total of " << entity_count << " entities" << endl;
 
     // set up our compressed representation
     util::assign(s_iv, int_vector<>(seq_length, 0, 3));
@@ -293,9 +304,12 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::assign(i_iv, int_vector<>(node_count));
     util::assign(f_iv, int_vector<>(entity_count));
     util::assign(f_bv, bit_vector(entity_count));
+    util::assign(f_from_start_bv, bit_vector(entity_count));
+    util::assign(f_to_end_bv, bit_vector(entity_count));
     util::assign(t_iv, int_vector<>(entity_count));
     util::assign(t_bv, bit_vector(entity_count));
-    //util::assign(e_iv, int_vector<>(edge_count*3));
+    util::assign(t_to_end_bv, bit_vector(entity_count));
+    util::assign(t_from_start_bv, bit_vector(entity_count));
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
@@ -324,45 +338,63 @@ void XG::from_vg(istream& in, bool print_graph) {
     size_t f_itr = 0;
     size_t j_itr = 0; // edge adjacency pointer
     for (size_t k = 0; k < node_count; ++k) {
-        //cerr << k << endl;
         int64_t f_id = i_iv[k];
         size_t f_rank = k+1;
         f_iv[f_itr] = f_rank;
         f_bv[f_itr] = 1;
         ++f_itr;
-        if (from_to.find(f_id) != from_to.end()) {
-            //e_iv[j_itr++] = 1; // indicates adjacency record start
-            for (auto& t_id : from_to[f_id]) {
-                size_t t_rank = i_wt.select(1, t_id)+1;
-                f_iv[f_itr] = t_rank;
-                f_bv[f_itr] = 0;
-                ++f_itr;
-                // store edge in adjacency index
-                //e_iv[j_itr++] = f_rank+1;
-                //e_iv[j_itr++] = t_rank+1;
+        for (auto end : { false, true }) {
+            if (from_to.find(Side(f_id, end)) != from_to.end()) {
+                for (auto& t_side : from_to[Side(f_id, end)]) {
+                    size_t t_rank = i_wt.select(1, t_side.first)+1;
+                    // store link
+                    f_iv[f_itr] = t_rank;
+                    f_bv[f_itr] = 0;
+                    // store side for start of edge
+                    f_from_start_bv[f_itr] = end;
+                    f_to_end_bv[f_itr] = t_side.second;
+                    ++f_itr;
+                }
             }
         }
     }
+
+    // compress the forward direction side information
+    util::assign(f_from_start_cbv, sd_vector<>(f_from_start_bv));
+    util::assign(f_to_end_cbv, sd_vector<>(f_to_end_bv));
     
     //assert(e_iv.size() == edge_count*3);
 
     cerr << "storing reverse edges" << endl;
+
     size_t t_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
+        //cerr << k << endl;
         int64_t t_id = i_iv[k];
         size_t t_rank = k+1;
         t_iv[t_itr] = t_rank;
         t_bv[t_itr] = 1;
         ++t_itr;
-        if (to_from.find(t_id) != to_from.end()) {
-            for (auto& f_id : to_from[t_id]) {
-                size_t f_rank = i_wt.select(1, f_id)+1;
-                t_iv[t_itr] = f_rank;
-                t_bv[t_itr] = 0;
-                ++t_itr;
+        for (auto end : { false, true }) {
+            if (to_from.find(Side(t_id, end)) != to_from.end()) {
+                for (auto& f_side : to_from[Side(t_id, end)]) {
+                    size_t f_rank = i_wt.select(1, f_side.first)+1;
+                    // store link
+                    t_iv[t_itr] = f_rank;
+                    t_bv[t_itr] = 0;
+                    // store side for end of edge
+                    t_to_end_bv[t_itr] = end;
+                    t_from_start_bv[t_itr] = f_side.second;
+                    ++t_itr;
+                }
             }
         }
     }
+
+    // compress the reverse direction side information
+    util::assign(t_to_end_cbv, sd_vector<>(t_to_end_bv));
+    util::assign(t_from_start_cbv, sd_vector<>(t_from_start_bv));
+
 
     /*
     csa_wt<wt_int<rrr_vector<63>>> csa;
@@ -416,21 +448,6 @@ void XG::from_vg(istream& in, bool print_graph) {
         path_entities += path->member_count;
     }
 
-    // do this here so we have the correct pointers
-    // if we do it as we iterate through the paths the pointer kept by sdsl is invalidated
-    //for (auto& po_bv : po_v) {
-    /*
-    for (auto& path : paths) {
-        // now make rank and select supports for path position finding
-        rank_support_v<_rank = po_v_rank.back();
-
-        po_v_select.emplace_back();
-        bit_vector::select_1_type& po_bv_select = po_v_select.back();
-
-    }
-    */
-    //cerr << path_names << endl;
-
     // handle path names
     util::assign(pn_iv, int_vector<>(path_names.size()));
     util::assign(pn_bv, bit_vector(path_names.size()));
@@ -475,7 +492,7 @@ void XG::from_vg(istream& in, bool print_graph) {
     assert(ep_off == path_entities+entity_count);
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
-    
+
     /*
     vlc_vector<> f_civ(f_iv);
     rrr_vector<> f_cbv(f_bv);
@@ -496,6 +513,11 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::assign(f_civ, enc_vector<>(f_iv));
     cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
     cerr << "|t_iv| = " << size_in_mega_bytes(t_iv) << endl;
+
+    //cerr << "|f_from_start_bv| = " << size_in_mega_bytes(f_from_start_bv) << endl;
+    cerr << "|f_from_start_cbv| = " << size_in_mega_bytes(f_from_start_cbv) << endl;
+    //cerr << "|t_to_end_bv| = " << size_in_mega_bytes(t_to_end_bv) << endl;
+    cerr << "|t_to_end_cbv| = " << size_in_mega_bytes(t_to_end_cbv) << endl;
 
     //cerr << "|s_bv| = " << size_in_mega_bytes(s_bv) << endl;
     cerr << "|f_bv| = " << size_in_mega_bytes(f_bv) << endl;
@@ -528,6 +550,8 @@ void XG::from_vg(istream& in, bool print_graph) {
     paths_mb_size += size_in_mega_bytes(ep_bv_rank);
     paths_mb_size += size_in_mega_bytes(ep_bv_select);
     cerr << "total paths size " << paths_mb_size << endl;
+    // TODO you are missing the rest of the paths size in xg::paths
+    // but this fragment should be factored into a function anyway
     
     cerr << "total size [MB] = " << (
         size_in_mega_bytes(s_iv)
@@ -543,6 +567,7 @@ void XG::from_vg(istream& in, bool print_graph) {
         ) << endl;
 
     if (print_graph) {
+        cerr << "printing graph" << endl;
         cerr << s_iv << endl;
         for (int i = 0; i < s_iv.size(); ++i) {
             cerr << revdna3bit(s_iv[i]);
@@ -600,18 +625,29 @@ void XG::from_vg(istream& in, bool print_graph) {
     }
     node_label.clear();
 
+    // -1 here seems weird
+    // what?
     cerr << "validating forward edge table" << endl;
-    // todo, why -1?
     for (size_t j = 0; j < f_iv.size()-1; ++j) {
-        //cerr << j << endl;
         if (f_bv[j] == 1) continue;
         // from id == rank
         size_t fid = i_iv[f_bv_rank(j)-1];
         // to id == f_cbv[j]
         size_t tid = i_iv[f_iv[j]-1];
-        //cerr << fid << " " << tid << endl;
-        if (from_to[fid].count(tid) == 0) {
-            cerr << "could not find edge (f) " << fid << " -> " << tid << endl;
+        bool from_start = f_from_start_bv[j];
+        // get the to_end
+        bool to_end = false;
+        for (auto& side : from_to[Side(fid, from_start)]) {
+            if (side.first == tid) {
+                to_end = side.second;
+            }
+        }
+        if (from_to[Side(fid, from_start)].count(Side(tid, to_end)) == 0) {
+            cerr << "could not find edge (f) "
+                 << fid << (from_start ? "+" : "-")
+                 << " -> "
+                 << tid << (to_end ? "+" : "-")
+                 << endl;
             assert(false);
         }
     }
@@ -625,12 +661,25 @@ void XG::from_vg(istream& in, bool print_graph) {
         // to id == f_cbv[j]
         size_t fid = i_iv[t_iv[j]-1];
         //cerr << tid << " " << fid << endl;
-        if (to_from[tid].count(fid) == 0) {
-            cerr << "could not find edge (t) " << fid << " -> " << tid << endl;
+
+        bool to_end = t_to_end_bv[j];
+        // get the to_end
+        bool from_start = false;
+        for (auto& side : to_from[Side(tid, to_end)]) {
+            if (side.first == fid) {
+                from_start = side.second;
+            }
+        }
+        if (to_from[Side(tid, to_end)].count(Side(fid, from_start)) == 0) {
+            cerr << "could not find edge (t) "
+                 << fid << (from_start ? "+" : "-")
+                 << " -> "
+                 << tid << (to_end ? "+" : "-")
+                 << endl;
             assert(false);
         }
     }
-
+    
     cerr << "validating paths" << endl;
     for (auto& pathpair : path_nodes) {
         const string& name = pathpair.first;
@@ -704,6 +753,8 @@ vector<Edge> XG::edges_to(int64_t id) {
         Edge edge;
         edge.set_to(id);
         edge.set_from(rank_to_id(t_iv[i]));
+        edge.set_from_start(t_from_start_cbv[i]);
+        edge.set_to_end(t_to_end_cbv[i]);
         edges.push_back(edge);
     }
     return edges;
@@ -718,6 +769,8 @@ vector<Edge> XG::edges_from(int64_t id) {
         Edge edge;
         edge.set_from(id);
         edge.set_to(rank_to_id(f_iv[i]));
+        edge.set_from_start(f_from_start_cbv[i]);
+        edge.set_to_end(f_to_end_cbv[i]);
         edges.push_back(edge);
     }
     return edges;
@@ -906,6 +959,7 @@ void XG::expand_context(Graph& g, size_t steps) {
     
 // if the graph ids partially ordered, this works no prob
 // otherwise... owch
+// the paths become disordered due to traversal of the node ids in order
 void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) {
     // pick up current paths
     map<string, Path*> paths;
@@ -953,16 +1007,16 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) {
     if (stop >= plen) stop = plen-1;
     size_t pr2 = path.offsets_rank(stop+1)-1;
     set<int64_t> nodes;
-    set<pair<int64_t, int64_t> > edges;
+    set<pair<Side, Side> > edges;
     auto& pi_wt = path.ids;
     for (size_t i = pr1; i <= pr2; ++i) {
         int64_t id = rank_to_id(pi_wt[i]);
         nodes.insert(id);
         for (auto& e : edges_from(id)) {
-            edges.insert(make_pair(e.from(), e.to()));
+            edges.insert(make_pair(Side(e.from(), e.from_start()), Side(e.to(), e.to_end())));
         }
         for (auto& e : edges_to(id)) {
-            edges.insert(make_pair(e.from(), e.to()));
+            edges.insert(make_pair(Side(e.from(), e.from_start()), Side(e.to(), e.to_end())));
         }
     }
     for (auto& n : nodes) {
@@ -977,13 +1031,17 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) {
                 p->set_name(m.first);
             }
             Path* new_path = local_paths[m.first];
+            // TODO output mapping direction
+            //if () { m.second.is_reverse(true); }
             *new_path->add_mapping() = m.second;
         }
     }
     for (auto& e : edges) {
         Edge edge;
-        edge.set_from(e.first);
-        edge.set_to(e.second);
+        edge.set_from(e.first.first);
+        edge.set_from_start(e.first.second);
+        edge.set_to(e.second.first);
+        edge.set_to_end(e.second.second);
         *g.add_edge() = edge;
     }
 }
@@ -1034,5 +1092,29 @@ void parse_region(const string& target, string& name, int64_t& start, int64_t& e
     }
 }
 
+void to_text(ostream& out, Graph& graph) {
+    out << "H" << "\t" << "HVN:Z:1.0" << endl;
+    for (size_t i = 0; i < graph.node_size(); ++i) {
+        auto& node = graph.node(i);
+        out << "S" << "\t" << node.id() << "\t" << node.sequence() << endl;
+    }
+    for (size_t i = 0; i < graph.path_size(); ++i) {
+        auto& path = graph.path(i);
+        for (size_t j = 0; j < path.mapping_size(); ++j) {
+            auto& mapping = path.mapping(i);
+            string orientation = mapping.is_reverse() ? "-" : "+";
+            out << "P" << "\t" << mapping.position().node_id()
+                << "\t" << path.name() << "\t"
+                << orientation << endl;
+        }
+    }
+    for (int i = 0; i < graph.edge_size(); ++i) {
+        auto& edge = graph.edge(i);
+        out << "L" << "\t" << edge.from() << "\t"
+            << (edge.from_start() ? "-" : "+") << "\t"
+            << edge.to() << "\t"
+            << (edge.to_end() ? "-" : "+") << endl;
+    }
+}
 
 }

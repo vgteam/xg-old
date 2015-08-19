@@ -29,6 +29,7 @@ public:
 };
 
 class XGPath;
+typedef pair<int64_t, bool> Side;
 
 class XG {
 public:
@@ -127,13 +128,22 @@ private:
     rank_support_v<1> f_bv_rank;
     bit_vector::select_1_type f_bv_select;
     bit_vector f_from_start_bv;
+    bit_vector f_to_end_bv;
+    sd_vector<> f_from_start_cbv;
+    sd_vector<> f_to_end_cbv;
 
     // and the same data in the reverse direction
     int_vector<> t_iv;
     bit_vector t_bv;
     rank_support_v<1> t_bv_rank;
     bit_vector::select_1_type t_bv_select;
+    // these bit vectors are only used during construction
+    // perhaps they should be moved?
+    bit_vector t_from_start_bv;
     bit_vector t_to_end_bv;
+    // used at runtime
+    sd_vector<> t_from_start_cbv;
+    sd_vector<> t_to_end_cbv;
 
     // edge table, allows o(1) determination of edge existence
     int_vector<> e_iv;
@@ -190,6 +200,7 @@ public:
 
 Mapping new_mapping(const string& name, int64_t id);
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
+void to_text(ostream& out, Graph& graph);
 
 }
 

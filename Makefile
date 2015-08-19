@@ -55,7 +55,7 @@ test:
 	cd test && make
 
 clean-xg:
-	rm -f *.o xg
+	rm -f *.o xg cpp/*
 
 clean:
 	rm -rf cpp

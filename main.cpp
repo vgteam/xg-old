@@ -26,6 +26,7 @@ void help_main(char** argv) {
          << "    -t, --edges-to ID    list edges to node with ID" << endl
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
          << "    -D, --debug          show debugging output" << endl
+         << "    -T, --text-output    write text instead of vg protobuf" << endl
          << "    -h, --help           this text" << endl;
 }
 
@@ -47,6 +48,7 @@ int main(int argc, char** argv) {
     bool node_context = false;
     string target;
     bool print_graph = false;
+    bool text_output = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -65,11 +67,12 @@ int main(int argc, char** argv) {
                 {"node-seq", required_argument, 0, 's'},
                 {"path", required_argument, 0, 'p'},
                 {"debug", no_argument, 0, 'D'},
+                {"text-output", no_argument, 0, 'T'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:D",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DT",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -89,6 +92,10 @@ int main(int argc, char** argv) {
 
         case 'D':
             print_graph = true;
+            break;
+
+        case 'T':
+            text_output = true;
             break;
 
         case 'i':
@@ -190,8 +197,12 @@ int main(int argc, char** argv) {
     if (node_context) {
         Graph g;
         graph->neighborhood(node_id, context_steps, g);
-        vector<Graph> gb = { g };
-        stream::write_buffered(cout, gb, 0);
+        if (text_output) {
+            to_text(cout, g);
+        } else {
+            vector<Graph> gb = { g };
+            stream::write_buffered(cout, gb, 0);
+        }
     }
 
     if (!target.empty()) {
@@ -203,11 +214,16 @@ int main(int argc, char** argv) {
         if (context_steps > 0) {
             graph->expand_context(g, context_steps);
         }
-        vector<Graph> gb = { g };
-        stream::write_buffered(cout, gb, 0);
+        if (text_output) {
+            to_text(cout, g);
+        } else {
+            vector<Graph> gb = { g };
+            stream::write_buffered(cout, gb, 0);
+        }
     }
 
     // fail...
+    // must be implemented
     //delete graph;
 
     return 0;

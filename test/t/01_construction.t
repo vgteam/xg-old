@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=..:$PATH # for xg
 
-plan tests 18
+plan tests 19
 
 is $(xg -v data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(xg -v data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
@@ -48,3 +48,7 @@ is $? 0 "graphs can be constructed with multiple paths"
 xg -v data/ll.vg -o ll.idx 2>/dev/null
 is $(xg -i ll.idx -n 1 -c 10 | md5sum | awk '{print $1}') "13294ce74910217ba041b65c7f775552" "a small graph can be exactly reconstructed from the index"
 rm ll.idx
+
+xg -v data/cyclic_all.vg -o c.idx 2>/dev/null
+is $(xg -c 10 -n 1 -i c.idx -T | grep '-' | wc -l) 4 "graphs with cycles and edges from specific sides can be stored and queried"
+rm c.idx
