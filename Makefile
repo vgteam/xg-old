@@ -45,7 +45,7 @@ xg.o: xg.cpp xg.hpp $(LIBSDSL) cpp/vg.pb.h
 $(EXECUTABLE): $(LIBS) main.o
 	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) main.o $(INCLUDES) $(LDSEARCH) -static -static-libstdc++ -static-libgcc -Wl,-Bstatic $(LDFLAGS)
 
-libxg.a: xg
+libxg.a: $(LIBS)
 	ar rs libxg.a $(LIBS)
 
 $(CMAKE_BIN):
