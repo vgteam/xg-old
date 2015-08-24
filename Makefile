@@ -4,7 +4,8 @@ CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 LIBS=main.o cpp/vg.pb.o xg.o
 INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Isdsl-lite/build/external/libdivsufsort-2.0.1/include -Istream
-LDFLAGS=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -Lsdsl-lite/build/external/libdivsufsort-2.0.1/lib -lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64
+LDSEARCH=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -Lsdsl-lite/build/external/libdivsufsort-2.0.1/lib
+LDFLAGS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
 STREAM=stream
 PROTOBUF=$(STREAM)/protobuf
 LIBPROTOBUF=stream/protobuf/libprotobuf.a
@@ -42,7 +43,7 @@ xg.o: xg.cpp xg.hpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o xg.o xg.cpp $(INCLUDES)
 
 $(EXECUTABLE): $(LIBS)
-	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDSEARCH) -static -static-libstdc++ -static-libgcc -Wl,-Bstatic $(LDFLAGS)
 
 $(CMAKE_BIN):
 	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
