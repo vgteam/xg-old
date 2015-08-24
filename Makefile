@@ -2,7 +2,7 @@
 
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
-LIBS=main.o cpp/vg.pb.o xg.o
+LIBS=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
 INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Isdsl-lite/build/external/libdivsufsort-2.0.1/include -Istream
 LDSEARCH=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -Lsdsl-lite/build/external/libdivsufsort-2.0.1/lib
 LDFLAGS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
@@ -42,8 +42,11 @@ main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h xg.hpp
 xg.o: xg.cpp xg.hpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o xg.o xg.cpp $(INCLUDES)
 
-$(EXECUTABLE): $(LIBS)
-	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) $(INCLUDES) $(LDSEARCH) -static -static-libstdc++ -static-libgcc -Wl,-Bstatic $(LDFLAGS)
+$(EXECUTABLE): $(LIBS) main.o
+	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) main.o $(INCLUDES) $(LDSEARCH) -static -static-libstdc++ -static-libgcc -Wl,-Bstatic $(LDFLAGS)
+
+libxg.a: xg
+	ar rs libxg.a $(LIBS)
 
 $(CMAKE_BIN):
 	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
