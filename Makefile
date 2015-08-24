@@ -59,12 +59,13 @@ test:
 	cd test && make
 
 clean-xg:
-	rm -f *.o xg cpp/*
+	rm -f *.o xg cpp/* libxg.a
 
 clean:
 	rm -rf cpp
 	rm -f $(EXECUTABLE)
 	rm -f *.o
+	rm -f libxg.a
 	rm $(LIBPROTOBUF)
 	cd $(PROTOBUF) && $(MAKE) clean && rm -rf build
 	rm -rf cmake-3.3.0-rc2-Linux-x86_64.tar.gz cmake-3.3.0-rc2-Linux-x86_64
