@@ -744,6 +744,14 @@ int64_t XG::rank_to_id(size_t rank) {
     return i_iv[rank-1];
 }
 
+vector<Edge> XG::edges_of(int64_t id) {
+    auto e1 = edges_to(id);
+    auto e2 = edges_from(id);
+    e1.reserve(e1.size() + distance(e2.begin(), e2.end()));
+    e1.insert(e1.end(), e2.begin(), e2.end());
+    return e1;
+}
+
 vector<Edge> XG::edges_to(int64_t id) {
     vector<Edge> edges;
     size_t rank = id_to_rank(id);
@@ -772,6 +780,26 @@ vector<Edge> XG::edges_from(int64_t id) {
         edge.set_from_start(f_from_start_cbv[i]);
         edge.set_to_end(f_to_end_cbv[i]);
         edges.push_back(edge);
+    }
+    return edges;
+}
+
+vector<Edge> XG::edges_on_start(int64_t id) {
+    vector<Edge> edges;
+    for (auto& edge : edges_of(id)) {
+        if (edge.to() == id || edge.from_start()) {
+            edges.push_back(edge);
+        }
+    }
+    return edges;
+}
+
+vector<Edge> XG::edges_on_end(int64_t id) {
+    vector<Edge> edges;
+    for (auto& edge : edges_of(id)) {
+        if (edge.from() == id || edge.to_end()) {
+            edges.push_back(edge);
+        }
     }
     return edges;
 }

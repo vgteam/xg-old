@@ -57,8 +57,11 @@ public:
     size_t max_node_rank(void);
     Node node(int64_t id); // gets node sequence
     string node_sequence(int64_t id);
+    vector<Edge> edges_of(int64_t id);
     vector<Edge> edges_to(int64_t id);
     vector<Edge> edges_from(int64_t id);
+    vector<Edge> edges_on_start(int64_t id);
+    vector<Edge> edges_on_end(int64_t id);
     size_t node_rank_as_entity(int64_t id);
     size_t edge_rank_as_entity(int64_t id1, int64_t id2);
     bool entity_is_node(size_t rank);
