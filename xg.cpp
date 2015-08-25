@@ -749,7 +749,17 @@ vector<Edge> XG::edges_of(int64_t id) {
     auto e2 = edges_from(id);
     e1.reserve(e1.size() + distance(e2.begin(), e2.end()));
     e1.insert(e1.end(), e2.begin(), e2.end());
-    return e1;
+    // now get rid of duplicates
+    vector<Edge> e3;
+    set<string> seen;
+    for (auto& edge : e1) {
+        string s; edge.SerializeToString(&s);
+        if (!seen.count(s)) {
+            e3.push_back(edge);
+            seen.insert(s);
+        }
+    }
+    return e3;
 }
 
 vector<Edge> XG::edges_to(int64_t id) {

@@ -24,6 +24,9 @@ void help_main(char** argv) {
          << "    -s, --node-seq ID    provide node sequence for ID" << endl
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
+         << "    -O, --edges-of ID    list all edges related to node with ID" << endl
+         << "    -S, --edges-on-start ID    list all edges on start of node with ID" << endl
+         << "    -E, --edges-on-end ID    list all edges on start of node with ID" << endl
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
          << "    -D, --debug          show debugging output" << endl
          << "    -T, --text-output    write text instead of vg protobuf" << endl
@@ -43,6 +46,9 @@ int main(int argc, char** argv) {
     int64_t node_id;
     bool edges_from = false;
     bool edges_to = false;
+    bool edges_of = false;
+    bool edges_on_start = false;
+    bool edges_on_end = false;
     bool node_sequence = false;
     int context_steps = 0;
     bool node_context = false;
@@ -64,6 +70,9 @@ int main(int argc, char** argv) {
                 {"context", required_argument, 0, 'c'},
                 {"edges-from", required_argument, 0, 'f'},
                 {"edges-to", required_argument, 0, 't'},
+                {"edges-of", required_argument, 0, 'O'},
+                {"edges-on-start", required_argument, 0, 'S'},
+                {"edges-on-end", required_argument, 0, 'E'},
                 {"node-seq", required_argument, 0, 's'},
                 {"path", required_argument, 0, 'p'},
                 {"debug", no_argument, 0, 'D'},
@@ -72,7 +81,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DT",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -119,6 +128,21 @@ int main(int argc, char** argv) {
         case 't':
             node_id = atol(optarg);
             edges_to = true;
+            break;
+
+        case 'O':
+            node_id = atol(optarg);
+            edges_of = true;
+            break;
+
+        case 'S':
+            node_id = atol(optarg);
+            edges_on_start = true;
+            break;
+
+        case 'E':
+            node_id = atol(optarg);
+            edges_on_end = true;
             break;
 
         case 's':
@@ -184,13 +208,36 @@ int main(int argc, char** argv) {
     if (edges_from) {
         vector<Edge> edges = graph->edges_from(node_id);
         for (auto& edge : edges) {
-            cout << edge.from() << " -> " << edge.to() << endl;
+            cout << edge.from() << (edge.from_start()?"-":"+")
+                 << " -> " << edge.to() << (edge.to_end()?"-":"+") << endl;
         }
     }
     if (edges_to) {
         vector<Edge> edges = graph->edges_to(node_id);
         for (auto& edge : edges) {
-            cout << edge.from() << " -> " << edge.to() << endl;
+            cout << edge.from() << (edge.from_start()?"-":"+")
+                 << " -> " << edge.to() << (edge.to_end()?"-":"+") << endl;
+        }
+    }
+    if (edges_of) {
+        vector<Edge> edges = graph->edges_of(node_id);
+        for (auto& edge : edges) {
+            cout << edge.from() << (edge.from_start()?"-":"+")
+                 << " -> " << edge.to() << (edge.to_end()?"-":"+") << endl;
+        }
+    }
+    if (edges_on_start) {
+        vector<Edge> edges = graph->edges_on_start(node_id);
+        for (auto& edge : edges) {
+            cout << edge.from() << (edge.from_start()?"-":"+")
+                 << " -> " << edge.to() << (edge.to_end()?"-":"+") << endl;
+        }
+    }
+    if (edges_on_end) {
+        vector<Edge> edges = graph->edges_on_end(node_id);
+        for (auto& edge : edges) {
+            cout << edge.from() << (edge.from_start()?"-":"+")
+                 << " -> " << edge.to() << (edge.to_end()?"-":"+") << endl;
         }
     }
 
