@@ -12,11 +12,12 @@ using namespace vg;
 using namespace xg;
 
 void help_main(char** argv) {
-    cerr << "usage: " << argv[0] << " [options] <graph.vg> >[graph.scg]" << endl
-         << "Compressed graph, emits on stdout." << endl
+    cerr << "usage: " << argv[0] << " [options]" << endl
+         << "Succinct representation of a queryable sequence graph" << endl
          << endl
          << "options:" << endl
          << "    -v, --vg FILE        compress graph in vg FILE" << endl
+         << "    -V, --validate       validate compression" << endl
          << "    -o, --out FILE       serialize graph to FILE" << endl
          << "    -i, --in FILE        use index in FILE" << endl
          << "    -n, --node ID        graph neighborhood around node with ID" << endl
@@ -55,6 +56,7 @@ int main(int argc, char** argv) {
     string target;
     bool print_graph = false;
     bool text_output = false;
+    bool validate_graph = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -77,11 +79,12 @@ int main(int argc, char** argv) {
                 {"path", required_argument, 0, 'p'},
                 {"debug", no_argument, 0, 'D'},
                 {"text-output", no_argument, 0, 'T'},
+                {"validate", no_argument, 0, 'V'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:V",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -93,6 +96,10 @@ int main(int argc, char** argv) {
 
         case 'v':
             vg_name = optarg;
+            break;
+
+        case 'V':
+            validate_graph = true;
             break;
 
         case 'o':
@@ -170,12 +177,12 @@ int main(int argc, char** argv) {
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
         graph = new XG;
-        graph->from_vg(std::cin, print_graph);
+        graph->from_vg(std::cin, validate_graph, print_graph);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
         graph = new XG;
-        graph->from_vg(in, print_graph);
+        graph->from_vg(in, validate_graph, print_graph);
     }
 
     if (out_name.size()) {

@@ -246,7 +246,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     
 }
 
-void XG::from_vg(istream& in, bool print_graph) {
+void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -292,11 +292,13 @@ void XG::from_vg(istream& in, bool print_graph) {
     path_count = path_nodes.size();
 
     size_t entity_count = node_count + edge_count;
+#ifdef VERBOSE_DEBUG
     cerr << "graph has " << seq_length << "bp in sequence, "
          << node_count << " nodes, "
          << edge_count << " edges, and "
          << path_count << " paths "
          << "for a total of " << entity_count << " entities" << endl;
+#endif
 
     // set up our compressed representation
     util::assign(s_iv, int_vector<>(seq_length, 0, 3));
@@ -313,7 +315,9 @@ void XG::from_vg(istream& in, bool print_graph) {
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
+#ifdef VERBOSE_DEBUG
     cerr << "storing node labels" << endl;
+#endif
     size_t i = 0; // insertion point
     size_t r = 1;
     for (auto& p : node_label) {
@@ -334,7 +338,9 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::bit_compress(i_iv);
     construct_im(i_wt, i_iv);
 
+#ifdef VERBOSE_DEBUG    
     cerr << "storing forward edges and adjacency table" << endl;
+#endif
     size_t f_itr = 0;
     size_t j_itr = 0; // edge adjacency pointer
     for (size_t k = 0; k < node_count; ++k) {
@@ -364,8 +370,9 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::assign(f_to_end_cbv, sd_vector<>(f_to_end_bv));
     
     //assert(e_iv.size() == edge_count*3);
-
+#ifdef VERBOSE_DEBUG
     cerr << "storing reverse edges" << endl;
+#endif
 
     size_t t_itr = 0;
     for (size_t k = 0; k < node_count; ++k) {
@@ -431,8 +438,9 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::assign(s_cbv_rank, rrr_vector<>::rank_1_type(&s_cbv));
     util::assign(s_cbv_select, rrr_vector<>::select_1_type(&s_cbv));
 
-
+#ifdef VERBOSE_DEBUG
     cerr << "storing paths" << endl;
+#endif
     // paths
     //path_nodes[name].push_back(m.position().node_id());
     string path_names;
@@ -493,45 +501,21 @@ void XG::from_vg(istream& in, bool print_graph) {
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
 
-    /*
-    vlc_vector<> f_civ(f_iv);
-    rrr_vector<> f_cbv(f_bv);
-    rrr_vector<>::rank_1_type f_cbv_rank(&f_cbv);
-    rrr_vector<>::select_1_type f_cbv_select(&f_cbv);
-    
-    vlc_vector<> t_civ(t_iv);
-    rrr_vector<> t_cbv(t_bv);
-    rrr_vector<>::rank_1_type t_cbv_rank(&t_cbv);
-    rrr_vector<>::select_1_type t_cbv_select(&t_cbv);
-    */
-    //map<string, sd_vector<> > p_cbv;
-    
+#ifdef DEBUG_CONSTRUCTION
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
-    //cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
-    enc_vector<> f_civ;
-    util::assign(f_civ, enc_vector<>(f_iv));
-    cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
     cerr << "|t_iv| = " << size_in_mega_bytes(t_iv) << endl;
 
-    //cerr << "|f_from_start_bv| = " << size_in_mega_bytes(f_from_start_bv) << endl;
     cerr << "|f_from_start_cbv| = " << size_in_mega_bytes(f_from_start_cbv) << endl;
-    //cerr << "|t_to_end_bv| = " << size_in_mega_bytes(t_to_end_bv) << endl;
     cerr << "|t_to_end_cbv| = " << size_in_mega_bytes(t_to_end_cbv) << endl;
 
-    //cerr << "|s_bv| = " << size_in_mega_bytes(s_bv) << endl;
     cerr << "|f_bv| = " << size_in_mega_bytes(f_bv) << endl;
     cerr << "|t_bv| = " << size_in_mega_bytes(t_bv) << endl;
 
-    //cerr << "|s_civ| = " << size_in_mega_bytes(s_civ) << endl;
     cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
     cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
-    //cerr << "|f_civ| = " << size_in_mega_bytes(f_civ) << endl;
-    //cerr << "|t_civ| = " << size_in_mega_bytes(t_civ) << endl;
 
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
-    //cerr << "|f_cbv| = " << size_in_mega_bytes(f_cbv) << endl;
-    //cerr << "|t_cbv| = " << size_in_mega_bytes(t_cbv) << endl;
 
     long double paths_mb_size = 0;
     cerr << "|pn_iv| = " << size_in_mega_bytes(pn_iv) << endl;
@@ -566,6 +550,8 @@ void XG::from_vg(istream& in, bool print_graph) {
         + paths_mb_size
         ) << endl;
 
+#endif
+
     if (print_graph) {
         cerr << "printing graph" << endl;
         cerr << s_iv << endl;
@@ -591,130 +577,131 @@ void XG::from_vg(istream& in, bool print_graph) {
         cerr << ep_iv << endl;
     }
 
-    cerr << "validating graph sequence" << endl;
-    int max_id = s_cbv_rank(s_cbv.size());
-    for (auto& p : node_label) {
-        int64_t id = p.first;
-        const string& l = p.second;
-        //size_t rank = node_rank[id];
-        size_t rank = id_to_rank(id);
-        //cerr << rank << endl;
-        // find the node in the array
-        //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
-        // this should be true given how we constructed things
-        if (rank != s_cbv_rank(s_cbv_select(rank)+1)) {
-            cerr << rank << " != " << s_cbv_rank(s_cbv_select(rank)+1) << " for node " << id << endl;
-            assert(false);
-        }
-        // get the sequence from the s_iv
-        string s = node_sequence(id);
+    if (validate_graph) {
+        cerr << "validating graph sequence" << endl;
+        int max_id = s_cbv_rank(s_cbv.size());
+        for (auto& p : node_label) {
+            int64_t id = p.first;
+            const string& l = p.second;
+            //size_t rank = node_rank[id];
+            size_t rank = id_to_rank(id);
+            //cerr << rank << endl;
+            // find the node in the array
+            //cerr << "id = " << id << " rank = " << s_cbv_select(rank) << endl;
+            // this should be true given how we constructed things
+            if (rank != s_cbv_rank(s_cbv_select(rank)+1)) {
+                cerr << rank << " != " << s_cbv_rank(s_cbv_select(rank)+1) << " for node " << id << endl;
+                assert(false);
+            }
+            // get the sequence from the s_iv
+            string s = node_sequence(id);
 
-        string ltmp, stmp;
-        if (l.size() != s.size()) {
-            cerr << l << " != " << endl << s << endl << " for node " << id << endl;
-            assert(false);
-        } else {
-            int j = 0;
-            for (auto c : l) {
-                if (dna3bit(c) != dna3bit(s[j++])) {
-                    cerr << l << " != " << endl << s << endl << " for node " << id << endl;
-                    assert(false);
+            string ltmp, stmp;
+            if (l.size() != s.size()) {
+                cerr << l << " != " << endl << s << endl << " for node " << id << endl;
+                assert(false);
+            } else {
+                int j = 0;
+                for (auto c : l) {
+                    if (dna3bit(c) != dna3bit(s[j++])) {
+                        cerr << l << " != " << endl << s << endl << " for node " << id << endl;
+                        assert(false);
+                    }
                 }
             }
         }
-    }
-    node_label.clear();
+        node_label.clear();
 
-    // -1 here seems weird
-    // what?
-    cerr << "validating forward edge table" << endl;
-    for (size_t j = 0; j < f_iv.size()-1; ++j) {
-        if (f_bv[j] == 1) continue;
-        // from id == rank
-        size_t fid = i_iv[f_bv_rank(j)-1];
-        // to id == f_cbv[j]
-        size_t tid = i_iv[f_iv[j]-1];
-        bool from_start = f_from_start_bv[j];
-        // get the to_end
-        bool to_end = false;
-        for (auto& side : from_to[Side(fid, from_start)]) {
-            if (side.first == tid) {
-                to_end = side.second;
+        // -1 here seems weird
+        // what?
+        cerr << "validating forward edge table" << endl;
+        for (size_t j = 0; j < f_iv.size()-1; ++j) {
+            if (f_bv[j] == 1) continue;
+            // from id == rank
+            size_t fid = i_iv[f_bv_rank(j)-1];
+            // to id == f_cbv[j]
+            size_t tid = i_iv[f_iv[j]-1];
+            bool from_start = f_from_start_bv[j];
+            // get the to_end
+            bool to_end = false;
+            for (auto& side : from_to[Side(fid, from_start)]) {
+                if (side.first == tid) {
+                    to_end = side.second;
+                }
+            }
+            if (from_to[Side(fid, from_start)].count(Side(tid, to_end)) == 0) {
+                cerr << "could not find edge (f) "
+                     << fid << (from_start ? "+" : "-")
+                     << " -> "
+                     << tid << (to_end ? "+" : "-")
+                     << endl;
+                assert(false);
             }
         }
-        if (from_to[Side(fid, from_start)].count(Side(tid, to_end)) == 0) {
-            cerr << "could not find edge (f) "
-                 << fid << (from_start ? "+" : "-")
-                 << " -> "
-                 << tid << (to_end ? "+" : "-")
-                 << endl;
-            assert(false);
-        }
-    }
 
-    cerr << "validating reverse edge table" << endl;
-    for (size_t j = 0; j < t_iv.size()-1; ++j) {
-        //cerr << j << endl;
-        if (t_bv[j] == 1) continue;
-        // from id == rank
-        size_t tid = i_iv[t_bv_rank(j)-1];
-        // to id == f_cbv[j]
-        size_t fid = i_iv[t_iv[j]-1];
-        //cerr << tid << " " << fid << endl;
+        cerr << "validating reverse edge table" << endl;
+        for (size_t j = 0; j < t_iv.size()-1; ++j) {
+            //cerr << j << endl;
+            if (t_bv[j] == 1) continue;
+            // from id == rank
+            size_t tid = i_iv[t_bv_rank(j)-1];
+            // to id == f_cbv[j]
+            size_t fid = i_iv[t_iv[j]-1];
+            //cerr << tid << " " << fid << endl;
 
-        bool to_end = t_to_end_bv[j];
-        // get the to_end
-        bool from_start = false;
-        for (auto& side : to_from[Side(tid, to_end)]) {
-            if (side.first == fid) {
-                from_start = side.second;
+            bool to_end = t_to_end_bv[j];
+            // get the to_end
+            bool from_start = false;
+            for (auto& side : to_from[Side(tid, to_end)]) {
+                if (side.first == fid) {
+                    from_start = side.second;
+                }
+            }
+            if (to_from[Side(tid, to_end)].count(Side(fid, from_start)) == 0) {
+                cerr << "could not find edge (t) "
+                     << fid << (from_start ? "+" : "-")
+                     << " -> "
+                     << tid << (to_end ? "+" : "-")
+                     << endl;
+                assert(false);
             }
         }
-        if (to_from[Side(tid, to_end)].count(Side(fid, from_start)) == 0) {
-            cerr << "could not find edge (t) "
-                 << fid << (from_start ? "+" : "-")
-                 << " -> "
-                 << tid << (to_end ? "+" : "-")
-                 << endl;
-            assert(false);
-        }
-    }
     
-    cerr << "validating paths" << endl;
-    for (auto& pathpair : path_nodes) {
-        const string& name = pathpair.first;
-        const vector<Traversal>& path = pathpair.second;
-        size_t prank = path_rank(name);
-        //cerr << path_name(prank) << endl;
-        assert(path_name(prank) == name);
-        sd_vector<>& pe_bv = paths[prank-1]->members;
-        int_vector<>& pp_iv = paths[prank-1]->positions;
-        sd_vector<>& dir_bv = paths[prank-1]->directions;
-        // check each entity in the nodes is present
-        // and check node reported at the positions in it
-        size_t pos = 0;
-        size_t in_path = 0;
-        for (auto& t : path) {
-            int64_t id = t.id;
-            bool rev = t.rev;
-            assert(pe_bv[node_rank_as_entity(id)-1]);
-            assert(dir_bv[in_path] == rev);
-            Node n = node(id);
-            //cerr << id << " in " << name << " at " << node_position_in_path(id, name) << " == " << pos << endl;
-            assert(node_position_in_path(id, name) == pos);
-            for (size_t k = 0; k < n.sequence().size(); ++k) {
-                //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
-                assert(id == node_at_path_position(name, pos+k));
+        cerr << "validating paths" << endl;
+        for (auto& pathpair : path_nodes) {
+            const string& name = pathpair.first;
+            const vector<Traversal>& path = pathpair.second;
+            size_t prank = path_rank(name);
+            //cerr << path_name(prank) << endl;
+            assert(path_name(prank) == name);
+            sd_vector<>& pe_bv = paths[prank-1]->members;
+            int_vector<>& pp_iv = paths[prank-1]->positions;
+            sd_vector<>& dir_bv = paths[prank-1]->directions;
+            // check each entity in the nodes is present
+            // and check node reported at the positions in it
+            size_t pos = 0;
+            size_t in_path = 0;
+            for (auto& t : path) {
+                int64_t id = t.id;
+                bool rev = t.rev;
+                assert(pe_bv[node_rank_as_entity(id)-1]);
+                assert(dir_bv[in_path] == rev);
+                Node n = node(id);
+                //cerr << id << " in " << name << " at " << node_position_in_path(id, name) << " == " << pos << endl;
+                assert(node_position_in_path(id, name) == pos);
+                for (size_t k = 0; k < n.sequence().size(); ++k) {
+                    //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
+                    assert(id == node_at_path_position(name, pos+k));
+                }
+                pos += n.sequence().size();
+                ++in_path;
             }
-            pos += n.sequence().size();
-            ++in_path;
+            //cerr << path_name << " rank = " << prank << endl;
+            // check membership now for each entity in the path
         }
-        //cerr << path_name << " rank = " << prank << endl;
-        // check membership now for each entity in the path
+
+        cerr << "graph ok" << endl;
     }
-
-    cerr << "graph ok" << endl;
-
 }
 
 Node XG::node(int64_t id) {

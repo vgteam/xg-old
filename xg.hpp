@@ -42,7 +42,7 @@ public:
                path_count(0) { }
     ~XG(void) { }
     XG(istream& in);
-    void from_vg(istream& in, bool print_graph = false);
+    void from_vg(istream& in, bool validate_graph = false, bool print_graph = false);
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
