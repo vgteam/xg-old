@@ -18,5 +18,5 @@ xg -Vv data/with_m.vg 2>/dev/null
 is $? 0 "graphs can be compressed even with M"
 
 xg -Vv data/cyclic_all.vg -o c.idx 2>/dev/null
-is $(xg -c 10 -n 1 -i c.idx -T | grep '-' | wc -l) 4 "graphs with cycles and edges from specific sides can be stored and queried"
+is $(xg -c 10 -n 1 -i c.idx -T | grep '-' | wc -l) 2 "graphs with cycles and edges from specific sides can be stored and queried"
 rm c.idx

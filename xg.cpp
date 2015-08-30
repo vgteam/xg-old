@@ -927,16 +927,21 @@ void XG::neighborhood(int64_t id, size_t steps, Graph& g) {
 
 void XG::expand_context(Graph& g, size_t steps) {
     map<int64_t, Node*> nodes;
-    map<pair<int64_t, int64_t>, Edge*> edges;
+    map<pair<Side, Side>, Edge*> edges;
     set<int64_t> to_visit;
     // start with the nodes in the graph
     for (size_t i = 0; i < g.node_size(); ++i) {
         to_visit.insert(g.node(i).id());
         // handles the single-node case: we should still get the paths
-        if (steps == 0) {
-            Node* np = g.mutable_node(i);
-            nodes[np->id()] = np;
-        }
+        Node* np = g.mutable_node(i);
+        nodes[np->id()] = np;
+    }
+    for (size_t i = 0; i < g.edge_size(); ++i) {
+        auto& edge = g.edge(i);
+        to_visit.insert(edge.from());
+        to_visit.insert(edge.to());
+        edges[make_pair(Side(edge.from(), edge.from_start()),
+                        Side(edge.to(), edge.to_end()))] = g.mutable_edge(i);
     }
     // and expand
     for (size_t i = 0; i < steps; ++i) {
@@ -944,19 +949,23 @@ void XG::expand_context(Graph& g, size_t steps) {
         for (auto id : to_visit) {
             // build out the graph
             // if we have nodes we haven't seeen
-            if (nodes.find(id) != nodes.end()) continue;
-            Node* np = g.add_node();
-            nodes[id] = np;
-            *np = node(id);
-            for (auto& edge : edges_from(id)) {
-                Edge* ep = g.add_edge(); *ep = edge;
-                edges[make_pair(edge.from(), edge.to())] = ep;
-                to_visit_next.insert(edge.to());
+            if (nodes.find(id) == nodes.end()) {
+                Node* np = g.add_node();
+                nodes[id] = np;
+                *np = node(id);
             }
-            for (auto& edge : edges_to(id)) {
-                Edge* ep = g.add_edge(); *ep = edge;
-                edges[make_pair(edge.from(), edge.to())] = ep;
-                to_visit_next.insert(edge.from());
+            for (auto& edge : edges_of(id)) {
+                auto sides = make_pair(Side(edge.from(), edge.from_start()),
+                                       Side(edge.to(), edge.to_end()));
+                if (edges.find(sides) == edges.end()) {
+                    Edge* ep = g.add_edge(); *ep = edge;
+                    edges[sides] = ep;
+                }
+                if (edge.from() == id) {
+                    to_visit_next.insert(edge.to());
+                } else {
+                    to_visit_next.insert(edge.from());
+                }
             }
         }
         to_visit = to_visit_next;

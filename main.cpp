@@ -265,9 +265,7 @@ int main(int argc, char** argv) {
         Graph g;
         parse_region(target, name, start, end);
         graph->get_path_range(name, start, end, g);
-        if (context_steps > 0) {
-            graph->expand_context(g, context_steps);
-        }
+        graph->expand_context(g, context_steps);
         if (text_output) {
             to_text(cout, g);
         } else {
