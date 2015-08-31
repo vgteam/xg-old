@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <omp.h>
 #include "cpp/vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
 #include "sdsl/enc_vector.hpp"
@@ -52,45 +53,45 @@ public:
     size_t edge_count;
     size_t path_count;
 
-    size_t id_to_rank(int64_t id);
-    int64_t rank_to_id(size_t rank);
-    size_t max_node_rank(void);
-    Node node(int64_t id); // gets node sequence
-    string node_sequence(int64_t id);
-    vector<Edge> edges_of(int64_t id);
-    vector<Edge> edges_to(int64_t id);
-    vector<Edge> edges_from(int64_t id);
-    vector<Edge> edges_on_start(int64_t id);
-    vector<Edge> edges_on_end(int64_t id);
-    size_t node_rank_as_entity(int64_t id);
-    size_t edge_rank_as_entity(int64_t id1, int64_t id2);
-    bool entity_is_node(size_t rank);
-    size_t entity_rank_as_node_rank(size_t rank);
-    bool has_edge(int64_t id1, int64_t id2);
+    size_t id_to_rank(int64_t id) const;
+    int64_t rank_to_id(size_t rank) const;
+    size_t max_node_rank(void) const;
+    Node node(int64_t id) const; // gets node sequence
+    string node_sequence(int64_t id) const;
+    vector<Edge> edges_of(int64_t id) const;
+    vector<Edge> edges_to(int64_t id) const;
+    vector<Edge> edges_from(int64_t id) const;
+    vector<Edge> edges_on_start(int64_t id) const;
+    vector<Edge> edges_on_end(int64_t id) const;
+    size_t node_rank_as_entity(int64_t id) const;
+    size_t edge_rank_as_entity(int64_t id1, int64_t id2) const;
+    bool entity_is_node(size_t rank) const;
+    size_t entity_rank_as_node_rank(size_t rank) const;
+    bool has_edge(int64_t id1, int64_t id2) const;
 
-    Path path(const string& name);
-    size_t path_rank(const string& name);
-    size_t max_path_rank(void);
-    string path_name(size_t rank);
-    vector<size_t> paths_of_entity(size_t rank);
-    vector<size_t> paths_of_node(int64_t id);
-    vector<size_t> paths_of_edge(int64_t id1, int64_t id2);
-    map<string, Mapping> node_mappings(int64_t id);
-    bool path_contains_node(const string& name, int64_t id);
-    bool path_contains_edge(const string& name, int64_t id1, int64_t id2);
-    bool path_contains_entity(const string& name, size_t rank);
-    void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g);
-    size_t node_occs_in_path(int64_t id, const string& name);
-    size_t node_position_in_path(int64_t id, const string& name);
-    int64_t node_at_path_position(const string& name, size_t pos);
-    size_t path_length(const string& name);
+    Path path(const string& name) const;
+    size_t path_rank(const string& name) const;
+    size_t max_path_rank(void) const;
+    string path_name(size_t rank) const;
+    vector<size_t> paths_of_entity(size_t rank) const;
+    vector<size_t> paths_of_node(int64_t id) const;
+    vector<size_t> paths_of_edge(int64_t id1, int64_t id2) const;
+    map<string, Mapping> node_mappings(int64_t id) const;
+    bool path_contains_node(const string& name, int64_t id) const;
+    bool path_contains_edge(const string& name, int64_t id1, int64_t id2) const;
+    bool path_contains_entity(const string& name, size_t rank) const;
+    void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
+    size_t node_occs_in_path(int64_t id, const string& name) const;
+    size_t node_position_in_path(int64_t id, const string& name) const;
+    int64_t node_at_path_position(const string& name, size_t pos) const;
+    size_t path_length(const string& name) const;
 
-    void neighborhood(int64_t id, size_t steps, Graph& g);
+    void neighborhood(int64_t id, size_t steps, Graph& g) const;
     //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
-    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g);
-    void expand_context(Graph& g, size_t steps);
-    void get_connected_nodes(Graph& g);
-    void get_id_range(int64_t id1, int64_t id2, Graph& g);
+    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g) const;
+    void expand_context(Graph& g, size_t steps) const;
+    void get_connected_nodes(Graph& g) const;
+    void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
     
     char start_marker;
