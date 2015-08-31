@@ -841,7 +841,7 @@ bool XG::has_edge(int64_t id1, int64_t id2) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
     size_t f_start = f_bv_select(rank1);
-    size_t f_end = f_bv_select(rank1+1);
+    size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
     for (size_t i = f_start; i < f_end; ++i) {
         if (rank2 == f_iv[i]) {
             return true;
@@ -855,7 +855,7 @@ size_t XG::edge_rank_as_entity(int64_t id1, int64_t id2) const {
     size_t rank2 = id_to_rank(id2);
     //cerr << "Finding rank for " << id1 << "(" << rank1 << ") " << " -> " << id2 << "(" << rank2 << ")"<< endl;
     size_t f_start = f_bv_select(rank1);
-    size_t f_end = f_bv_select(rank1+1);
+    size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
     //cerr << f_start << " to " << f_end << endl;
     for (size_t i = f_start; i < f_end; ++i) {
         //cerr << f_iv[i] << endl;
