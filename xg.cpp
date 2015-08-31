@@ -1028,9 +1028,7 @@ void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const {
 }
 
 void XG::get_id_range(int64_t id1, int64_t id2, Graph& g) const {
-    int64_t min_id = i_iv[0]; // assumes they are sorted
-    int64_t max_id = i_iv[i_iv.size()-1];
-    id1 = max((int64_t)1, min_id);
+    id1 = max(min_id, id1);
     id2 = min(max_id, id2);
     for (auto i = id1; i <= id2; ++i) {
         *g.add_node() = node(i);
