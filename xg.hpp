@@ -114,6 +114,9 @@ private:
 
     // maintain old ids from input, ranked as in s_iv and s_bv
     int_vector<> i_iv;
+    int64_t min_id; // id ranges don't have to start at 0
+    int64_t max_id;
+    int_vector<> r_iv; // ids-id_min is the rank
 
     // maintain forward links
     int_vector<> f_iv;
@@ -142,10 +145,10 @@ private:
     int_vector<> e_iv;
 
     //csa_wt<> e_csa;
-    csa_sada<> e_csa;
+    //csa_sada<> e_csa;
 
     // allows lookups of id->rank mapping
-    wt_int<> i_wt;
+    //wt_int<> i_wt;
 
     // paths: serialized as bitvectors over nodes and edges
     int_vector<> pn_iv; // path names

@@ -50,9 +50,11 @@ void XG::load(istream& in) {
     sdsl::read_member(path_count, in);
     size_t entity_count = node_count + edge_count;
     //cerr << sequence_length << ", " << node_count << ", " << edge_count << endl;
+    sdsl::read_member(min_id, in);
+    sdsl::read_member(max_id, in);
 
     i_iv.load(in);
-    i_wt.load(in);
+    r_iv.load(in);
 
     s_iv.load(in);
     s_cbv.load(in);
@@ -202,9 +204,11 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += sdsl::write_member(i_iv.size(), out, child, "node_count");
     written += sdsl::write_member(f_iv.size()-i_iv.size(), out, child, "edge_count");
     written += sdsl::write_member(path_count, out, child, "path_count");
+    written += sdsl::write_member(min_id, out, child, "min_id");
+    written += sdsl::write_member(max_id, out, child, "max_id");
 
-    written += i_iv.serialize(out, child, "id_vector");
-    written += i_wt.serialize(out, child, "id_wavelet_tree");
+    written += i_iv.serialize(out, child, "id_rank_vector");
+    written += r_iv.serialize(out, child, "rank_id_vector");
 
     written += s_iv.serialize(out, child, "seq_vector");
     written += s_cbv.serialize(out, child, "seq_node_starts");
@@ -300,10 +304,15 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
          << "for a total of " << entity_count << " entities" << endl;
 #endif
 
+    // for mapping of ids to ranks using a vector rather than wavelet tree
+    min_id = node_label.begin()->first;
+    max_id = node_label.rbegin()->first;
+    
     // set up our compressed representation
     util::assign(s_iv, int_vector<>(seq_length, 0, 3));
     util::assign(s_bv, bit_vector(seq_length));
     util::assign(i_iv, int_vector<>(node_count));
+    util::assign(r_iv, int_vector<>(max_id-min_id+1)); // note possibly discontiguous
     util::assign(f_iv, int_vector<>(entity_count));
     util::assign(f_bv, bit_vector(entity_count));
     util::assign(f_from_start_bv, bit_vector(entity_count));
@@ -325,6 +334,8 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
         const string& l = p.second;
         s_bv[i] = 1; // record node start
         i_iv[r-1] = id;
+        // store ids to rank mapping
+        r_iv[id-min_id] = r;
         ++r;
         for (auto c : l) {
             s_iv[i++] = dna3bit(c); // store sequence
@@ -336,7 +347,7 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
     // because we need to ensure full coverage of node space
 
     util::bit_compress(i_iv);
-    construct_im(i_wt, i_iv);
+    util::bit_compress(r_iv);
 
 #ifdef VERBOSE_DEBUG    
     cerr << "storing forward edges and adjacency table" << endl;
@@ -352,7 +363,7 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
         for (auto end : { false, true }) {
             if (from_to.find(Side(f_id, end)) != from_to.end()) {
                 for (auto& t_side : from_to[Side(f_id, end)]) {
-                    size_t t_rank = i_wt.select(1, t_side.first)+1;
+                    size_t t_rank = id_to_rank(t_side.first);
                     // store link
                     f_iv[f_itr] = t_rank;
                     f_bv[f_itr] = 0;
@@ -385,7 +396,7 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
         for (auto end : { false, true }) {
             if (to_from.find(Side(t_id, end)) != to_from.end()) {
                 for (auto& f_side : to_from[Side(t_id, end)]) {
-                    size_t f_rank = i_wt.select(1, f_side.first)+1;
+                    size_t f_rank = id_to_rank(f_side.first);
                     // store link
                     t_iv[t_itr] = f_rank;
                     t_bv[t_itr] = 0;
@@ -724,11 +735,11 @@ string XG::node_sequence(int64_t id) const {
 }
 
 size_t XG::id_to_rank(int64_t id) const {
-    return i_wt.select(1, id)+1;
+    return r_iv[id-min_id];
 }
 
 int64_t XG::rank_to_id(size_t rank) const {
-    assert(rank > 0);
+    //assert(rank > 0);
     return i_iv[rank-1];
 }
 
