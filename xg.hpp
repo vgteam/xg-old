@@ -89,6 +89,9 @@ public:
     void neighborhood(int64_t id, size_t steps, Graph& g) const;
     //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
     void get_path_range(string& name, int64_t start, int64_t stop, Graph& g) const;
+    // Walk out the given number of steps from the nodes and edges already in
+    // the graph, adding in nodes and their attached edges. Does not produce
+    // orphan edges.
     void expand_context(Graph& g, size_t steps) const;
     void get_connected_nodes(Graph& g) const;
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
