@@ -10,8 +10,20 @@ STREAM=stream
 PROTOBUF=$(STREAM)/protobuf
 LIBPROTOBUF=stream/protobuf/libprotobuf.a
 LIBSDSL=sdsl-lite/build/lib/libsdsl.a
-CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
 EXECUTABLE=xg
+
+#Some little adjustments to build on OSX
+#(tested with gcc4.9 installed from MacPorts)
+SYS=$(shell uname -s)
+ifeq (${SYS},Darwin)
+	CMAKE_BIN= # linux binary won't work on os x
+	CMAKE_SETPATH= # mac ports cmake seems to work just fine so leave blank
+	STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as static.
+else
+	CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
+	CMAKE_SETPATH=PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
+	STATICFLAGS=-static -static-libstdc++ -static-libgcc -Wl,-Bstatic
+endif
 
 all: $(EXECUTABLE)
 
@@ -26,8 +38,8 @@ $(LIBPROTOBUF):
 	cd $(STREAM) && $(MAKE)
 
 $(LIBSDSL): $(CMAKE_BIN)
-	PATH=cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH} cmake --version
-	cd sdsl-lite/build && PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH} cmake .. -Wno-dev && $(MAKE)
+	$(CMAKE_SETPATH) cmake --version
+	cd sdsl-lite/build && $(CMAKE_SETPATH) cmake .. -Wno-dev && $(MAKE)
 
 cpp/vg.pb.cc: cpp/vg.pb.h
 cpp/vg.pb.h: vg.proto $(LIBPROTOBUF)
@@ -43,7 +55,7 @@ xg.o: xg.cpp xg.hpp $(LIBSDSL) cpp/vg.pb.h
 	$(CXX) $(CXXFLAGS) -c -o xg.o xg.cpp $(INCLUDES)
 
 $(EXECUTABLE): $(LIBS) main.o
-	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) main.o $(INCLUDES) $(LDSEARCH) -static -static-libstdc++ -static-libgcc -Wl,-Bstatic $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) main.o $(INCLUDES) $(LDSEARCH) $(STATICFLAGS) $(LDFLAGS)
 
 libxg.a: $(LIBS)
 	ar rs libxg.a $(LIBS)
