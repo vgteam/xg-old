@@ -37,6 +37,10 @@ XG::XG(istream& in) {
     load(in);
 }
 
+XG::XG(Graph& graph) {
+    from_graph(graph);
+}
+
 void XG::load(istream& in) {
 
     if (!in.good()) {

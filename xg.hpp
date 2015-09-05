@@ -43,6 +43,7 @@ public:
                path_count(0) { }
     ~XG(void) { }
     XG(istream& in);
+    XG(Graph& graph);
     void from_stream(istream& in, bool validate_graph = false, bool print_graph = false);
     void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false);
     void build(map<int64_t, string>& node_label,
