@@ -43,7 +43,14 @@ public:
                path_count(0) { }
     ~XG(void) { }
     XG(istream& in);
-    void from_vg(istream& in, bool validate_graph = false, bool print_graph = false);
+    void from_stream(istream& in, bool validate_graph = false, bool print_graph = false);
+    void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false);
+    void build(map<int64_t, string>& node_label,
+               map<Side, set<Side> >& from_to,
+               map<Side, set<Side> >& to_from,
+               map<string, vector<Traversal> >& path_nodes,
+               bool validate_graph,
+               bool print_graph);
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
@@ -177,7 +184,7 @@ public:
            const vector<Traversal>& path,
            size_t entity_count,
            XG& graph,
-           map<int64_t, string>& node_label);
+           const map<int64_t, string>& node_label);
     string name;
     size_t member_count;
     sd_vector<> members;

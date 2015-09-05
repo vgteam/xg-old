@@ -177,12 +177,12 @@ int main(int argc, char** argv) {
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
         graph = new XG;
-        graph->from_vg(std::cin, validate_graph, print_graph);
+        graph->from_stream(std::cin, validate_graph, print_graph);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
         graph = new XG;
-        graph->from_vg(in, validate_graph, print_graph);
+        graph->from_stream(in, validate_graph, print_graph);
     }
 
     if (out_name.size()) {

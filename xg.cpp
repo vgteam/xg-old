@@ -122,7 +122,7 @@ XGPath::XGPath(const string& path_name,
                const vector<Traversal>& path,
                size_t entity_count,
                XG& graph,
-               map<int64_t, string>& node_label) {
+               const map<int64_t, string>& node_label) {
 
     name = path_name;
     member_count = 0;
@@ -147,8 +147,14 @@ XGPath::XGPath(const string& path_name,
     // determine total length
     for (size_t i = 0; i < path.size(); ++i) {
         auto& node_id = path[i].id;
-        path_length += node_label[node_id].size();
-        ids_iv[i] = graph.id_to_rank(node_id);
+        auto label_itr = node_label.find(node_id);
+        if (label_itr != node_label.end()) {
+            path_length += label_itr->second.size();
+            ids_iv[i] = graph.id_to_rank(node_id);
+        } else {
+            cerr << "[xg] error: when making paths could not find node label for " << node_id << endl;
+            assert(false);
+        }
     }
 
     // make the bitvector for path offsets
@@ -169,7 +175,14 @@ XGPath::XGPath(const string& path_name,
         // record position of node
         offsets[path_off] = 1;
         // and update the offset counter
-        path_off += node_label[node_id].size();
+        auto label_itr = node_label.find(node_id);
+        if (label_itr != node_label.end()) {
+            path_off += label_itr->second.size();
+        } else {
+            cerr << "[xg] error: when recording offsets could not find node label for " << node_id << endl;
+            assert(false);
+        }
+
         // find the next edge in the path, and record it
         if (i+1 < path.size()) { // but only if there is a next node
             auto& next_node_id = path[i+1].id;
@@ -250,7 +263,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     
 }
 
-void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
+void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -294,6 +307,60 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
     };
     stream::for_each(in, lambda);
     path_count = path_nodes.size();
+
+    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
+
+}
+
+void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
+
+    // temporaries for construction
+    map<int64_t, string> node_label;
+    // need to store node sides
+    map<Side, set<Side> > from_to;
+    map<Side, set<Side> > to_from;
+    map<string, vector<Traversal> > path_nodes;
+
+    // we can always resize smaller, but not easily extend
+    for (int i = 0; i < graph.node_size(); ++i) {
+        const Node& n = graph.node(i);
+        if (node_label.find(n.id()) == node_label.end()) {
+            ++node_count;
+            seq_length += n.sequence().size();
+            node_label[n.id()] = n.sequence();
+        }
+    }
+    for (int i = 0; i < graph.edge_size(); ++i) {
+        const Edge& e = graph.edge(i);
+        if (from_to.find(Side(e.from(), e.from_start())) == from_to.end()
+            || from_to[Side(e.from(), e.from_start())].count(Side(e.to(), e.to_end())) == 0) {
+            ++edge_count;
+            from_to[Side(e.from(), e.from_start())].insert(Side(e.to(), e.to_end()));
+            to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
+        }
+    }
+    for (int i = 0; i < graph.path_size(); ++i) {
+        const Path& p = graph.path(i);
+        const string& name = p.name();
+        for (int j = 0; j < p.mapping_size(); ++j) {
+            const Mapping& m = p.mapping(j);
+            path_nodes[name].push_back(Traversal(m.position().node_id(),
+                                                 m.is_reverse()));
+        }
+    }
+
+    path_count = path_nodes.size();
+
+    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
+
+}
+
+void XG::build(map<int64_t, string>& node_label,
+               map<Side, set<Side> >& from_to,
+               map<Side, set<Side> >& to_from,
+               map<string, vector<Traversal> >& path_nodes,
+               bool validate_graph,
+               bool print_graph) {
 
     size_t entity_count = node_count + edge_count;
 #ifdef VERBOSE_DEBUG
@@ -362,15 +429,18 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
         ++f_itr;
         for (auto end : { false, true }) {
             if (from_to.find(Side(f_id, end)) != from_to.end()) {
-                for (auto& t_side : from_to[Side(f_id, end)]) {
-                    size_t t_rank = id_to_rank(t_side.first);
-                    // store link
-                    f_iv[f_itr] = t_rank;
-                    f_bv[f_itr] = 0;
-                    // store side for start of edge
-                    f_from_start_bv[f_itr] = end;
-                    f_to_end_bv[f_itr] = t_side.second;
-                    ++f_itr;
+                auto t_side_itr = from_to.find(Side(f_id, end));
+                if (t_side_itr != from_to.end()) {
+                    for (auto& t_side : t_side_itr->second) {
+                        size_t t_rank = id_to_rank(t_side.first);
+                        // store link
+                        f_iv[f_itr] = t_rank;
+                        f_bv[f_itr] = 0;
+                        // store side for start of edge
+                        f_from_start_bv[f_itr] = end;
+                        f_to_end_bv[f_itr] = t_side.second;
+                        ++f_itr;
+                    }
                 }
             }
         }
@@ -395,15 +465,18 @@ void XG::from_vg(istream& in, bool validate_graph, bool print_graph) {
         ++t_itr;
         for (auto end : { false, true }) {
             if (to_from.find(Side(t_id, end)) != to_from.end()) {
-                for (auto& f_side : to_from[Side(t_id, end)]) {
-                    size_t f_rank = id_to_rank(f_side.first);
-                    // store link
-                    t_iv[t_itr] = f_rank;
-                    t_bv[t_itr] = 0;
-                    // store side for end of edge
-                    t_to_end_bv[t_itr] = end;
-                    t_from_start_bv[t_itr] = f_side.second;
-                    ++t_itr;
+                auto f_side_itr = to_from.find(Side(t_id, end));
+                if (f_side_itr != to_from.end()) {
+                    for (auto& f_side : f_side_itr->second) {
+                        size_t f_rank = id_to_rank(f_side.first);
+                        // store link
+                        t_iv[t_itr] = f_rank;
+                        t_bv[t_itr] = 0;
+                        // store side for end of edge
+                        t_to_end_bv[t_itr] = end;
+                        t_from_start_bv[t_itr] = f_side.second;
+                        ++t_itr;
+                    }
                 }
             }
         }
