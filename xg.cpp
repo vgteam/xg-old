@@ -33,11 +33,23 @@ char revdna3bit(int i) {
     }
 }
 
-XG::XG(istream& in) {
+XG::XG(istream& in)
+    : start_marker('#'),
+      end_marker('$'),
+      seq_length(0),
+      node_count(0),
+      edge_count(0),
+      path_count(0) {
     load(in);
 }
 
-XG::XG(Graph& graph) {
+XG::XG(Graph& graph)
+    : start_marker('#'),
+      end_marker('$'),
+      seq_length(0),
+      node_count(0),
+      edge_count(0),
+      path_count(0) {
     from_graph(graph);
 }
 
