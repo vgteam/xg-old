@@ -1071,7 +1071,8 @@ void XG::expand_context(Graph& g, size_t steps) const {
         }
         to_visit = to_visit_next;
     }
-    // then add connected nodes
+    // then add connected nodes so we don't have orphan edges
+    to_visit.clear();
     for (auto& e : edges) {
         auto& edge = e.second;
         // get missing nodes
@@ -1080,14 +1081,36 @@ void XG::expand_context(Graph& g, size_t steps) const {
             Node* np = g.add_node();
             nodes[f] = np;
             *np = node(f);
+            to_visit.insert(f);
         }
         int64_t t = edge->to();
         if (nodes.find(t) == nodes.end()) {
             Node* np = g.add_node();
             nodes[t] = np;
             *np = node(t);
+            to_visit.insert(t);
         }
     }
+    
+    // add in the edges between the newly added nodes. All their other edges
+    // that wou;dn't be orphaned have been accounted for.
+    for (auto& id : to_visit) {
+        for (auto& edge : edges_of(id)) {
+            if(!to_visit.count(edge.from()) || !to_visit.count(edge.to())) {
+                // this edge would be orphaned or should already be there.
+                continue;
+            }
+        
+            auto sides = make_pair(Side(edge.from(), edge.from_start()),
+                                   Side(edge.to(), edge.to_end()));
+            if (edges.find(sides) == edges.end()) {
+                // Add the edge if we don't have it
+                Edge* ep = g.add_edge(); *ep = edge;
+                edges[sides] = ep;
+            }
+        }
+    }
+    
     add_paths_to_graph(nodes, g);
 }
 
