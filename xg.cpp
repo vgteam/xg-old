@@ -1096,22 +1096,58 @@ void XG::expand_context(Graph& g, size_t steps) const {
 // otherwise... owch
 // the paths become disordered due to traversal of the node ids in order
 void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const {
+    // todo use path-relative positions to reorder the paths in the graph
+    map<string, map<size_t, vector<Mapping>>> paths;
+    map<string, vector<Mapping>> unplaced;
+    // use:
+    //size_t node_position_in_path(int64_t id, const string& name) const;
+
     // pick up current paths
-    map<string, Path*> paths;
     for (size_t i = 0; i < g.path_size(); ++i) {
-        paths[g.path(i).name()] = g.mutable_path(i);
+        auto& path = g.path(i);
+        map<size_t, vector<Mapping>>& mappings = paths[path.name()];
+        for (size_t j = 0; j < path.mapping_size(); ++j) {
+            auto& m = path.mapping(j);
+            if (!m.has_position() || m.position().node_id() == 0) {
+                unplaced[path.name()].push_back(m);
+            } else {
+                paths[path.name()]
+                    [node_position_in_path(m.position().node_id(), path.name())
+                      +m.position().offset()].push_back(m);
+            }                
+        }
     }
-    // store in graph
+    // do the same for the mappings in the list of nodes
     for (auto& n : nodes) {
+        auto& id = n.first;
         auto& node = n.second;
-        for (auto& m : node_mappings(n.first)) {
-            if (paths.find(m.first) == paths.end()) {
-                Path* p = g.add_path();
-                paths[m.first] = p;
-                p->set_name(m.first);
+        for (auto& n : node_mappings(id)) {
+            auto& name = n.first;
+            auto& m = n.second;
+            if (m.has_position() && m.position().node_id()) {
+                paths[name]
+                     [node_position_in_path(id, name)
+                      +m.position().offset()].push_back(m);
             }
-            Path* path = paths[m.first];
-            *path->add_mapping() = m.second;
+        }
+    }
+    // clear graph's paths, as we're possibly resorting them
+    g.clear_path();
+    for (auto& p : paths) {
+        auto& name = p.first;
+        auto& mappings = p.second;
+        Path* path = g.add_path();
+        path->set_name(name);
+        for (auto& n : mappings) {
+            for (auto& m : n.second) {
+                *path->add_mapping() = m;
+            }
+        }
+        if (unplaced.find(name) != unplaced.end()) {
+            auto& unp = unplaced[name];
+            for (auto& m : unp) {
+                *path->add_mapping() = m;
+            }
         }
     }
 }
