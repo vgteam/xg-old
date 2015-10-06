@@ -1026,7 +1026,7 @@ void XG::neighborhood(int64_t id, size_t steps, Graph& g) const {
     expand_context(g, steps);
 }
 
-void XG::expand_context(Graph& g, size_t steps) const {
+void XG::expand_context(Graph& g, size_t steps, bool add_paths) const {
     map<int64_t, Node*> nodes;
     map<pair<Side, Side>, Edge*> edges;
     set<int64_t> to_visit;
@@ -1088,7 +1088,9 @@ void XG::expand_context(Graph& g, size_t steps) const {
             *np = node(t);
         }
     }
-    add_paths_to_graph(nodes, g);
+    if (add_paths) {
+        add_paths_to_graph(nodes, g);
+    }
 }
 
     
@@ -1231,7 +1233,11 @@ size_t XG::node_position_in_path(int64_t id, const string& name) const {
         cerr << "warning: path " << name << " contains a loop" << endl;
     }
     auto& path = *paths[path_rank(name)-1];
-    return path.positions[path.ids.select(1, id_to_rank(id))];
+    auto rank = id_to_rank(id);
+    size_t node_rank_in_path;
+#pragma omp critical (path_ids)
+    node_rank_in_path = path.ids.select(1, rank);
+    return path.positions[node_rank_in_path];
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
