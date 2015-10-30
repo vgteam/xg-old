@@ -93,6 +93,7 @@ public:
     vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
     vector<size_t> node_positions_in_path(int64_t id, const string& name) const;
     int64_t node_at_path_position(const string& name, size_t pos) const;
+    Mapping mapping_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;
 
     void neighborhood(int64_t id, size_t steps, Graph& g) const;

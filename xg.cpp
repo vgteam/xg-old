@@ -809,6 +809,7 @@ void XG::build(map<int64_t, string>& node_label,
                 for (size_t k = 0; k < n.sequence().size(); ++k) {
                     //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
                     assert(id == node_at_path_position(name, pos+k));
+                    assert(id == mapping_at_path_position(name, pos+k).position().node_id());
                 }
                 pos += n.sequence().size();
                 ++in_path;
@@ -1275,6 +1276,11 @@ vector<size_t> XG::node_positions_in_path(int64_t id, const string& name) const 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
     size_t p = path_rank(name)-1;
     return paths[p]->ids[paths[p]->offsets_rank(pos+1)-1];
+}
+
+Mapping XG::mapping_at_path_position(const string& name, size_t pos) const {
+    size_t p = path_rank(name)-1;
+    return paths[p]->mapping(paths[p]->offsets_rank(pos+1)-1);
 }
 
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse) {
