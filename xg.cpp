@@ -113,6 +113,7 @@ void XGPath::load(istream& in) {
     members.load(in);
     ids.load(in);
     directions.load(in);
+    ranks.load(in);
     positions.load(in);
     offsets.load(in);
     offsets_rank.load(in, &offsets);
@@ -127,6 +128,7 @@ size_t XGPath::serialize(std::ostream& out,
     written += members.serialize(out, child, "path_membership_" + name);
     written += ids.serialize(out, child, "path_node_ids_" + name);
     written += directions.serialize(out, child, "path_node_directions_" + name);
+    written += ranks.serialize(out, child, "path_mapping_ranks_" + name);
     written += positions.serialize(out, child, "path_node_offsets_" + name);
     written += offsets.serialize(out, child, "path_node_starts_" + name);
     written += offsets_rank.serialize(out, child, "path_node_starts_rank_" + name);
@@ -135,7 +137,7 @@ size_t XGPath::serialize(std::ostream& out,
 }
 
 XGPath::XGPath(const string& path_name,
-               const vector<Traversal>& path,
+               const vector<Mapping>& path,
                size_t entity_count,
                XG& graph,
                const map<int64_t, string>& node_label) {
@@ -154,6 +156,8 @@ XGPath::XGPath(const string& path_name,
     util::assign(directions_bv, bit_vector(path.size()));
     // node positions in path
     util::assign(positions, int_vector<>(path.size()));
+    // mapping ranks in path
+    util::assign(ranks, int_vector<>(path.size()));
 
     size_t path_off = 0;
     size_t members_off = 0;
@@ -162,11 +166,11 @@ XGPath::XGPath(const string& path_name,
 
     // determine total length
     for (size_t i = 0; i < path.size(); ++i) {
-        auto& node_id = path[i].id;
+        auto node_id = path[i].position().node_id();
         auto label_itr = node_label.find(node_id);
         if (label_itr != node_label.end()) {
             path_length += label_itr->second.size();
-            ids_iv[i] = graph.id_to_rank(node_id);
+            ids_iv[i] = node_id;
         } else {
             cerr << "[xg] error: when making paths could not find node label for " << node_id << endl;
             assert(false);
@@ -177,13 +181,15 @@ XGPath::XGPath(const string& path_name,
     util::assign(offsets, bit_vector(path_length));
     for (size_t i = 0; i < path.size(); ++i) {
         //cerr << i << endl;
-        auto& node_id = path[i].id;
-        auto direction = path[i].rev;
+        auto& mapping = path[i];
+        auto node_id = mapping.position().node_id();
         //cerr << node_id << endl;
         // record node
         members_bv[graph.node_rank_as_entity(node_id)-1] = 1;
         // record direction of passage through node
-        directions_bv[i] = direction;
+        directions_bv[i] = mapping.is_reverse();
+        // and the external rank of the mapping
+        ranks[i] = mapping.rank();
         // we've seen another entity
         ++member_count;
         // and record node offset in path
@@ -201,7 +207,7 @@ XGPath::XGPath(const string& path_name,
 
         // find the next edge in the path, and record it
         if (i+1 < path.size()) { // but only if there is a next node
-            auto& next_node_id = path[i+1].id;
+            auto next_node_id = path[i+1].position().node_id();
             if (graph.has_edge(node_id, next_node_id)) {
                 members_bv[graph.edge_rank_as_entity(node_id, next_node_id)-1] = 1;
                 // TODO should we record directions for edges?
@@ -219,9 +225,19 @@ XGPath::XGPath(const string& path_name,
     construct_im(ids, ids_iv);
     // bit compress the positional offset info
     util::bit_compress(positions);
+    // bit compress mapping ranks
+    util::bit_compress(ranks);
 
     util::assign(offsets_rank, rank_support_v<1>(&offsets));
     util::assign(offsets_select, bit_vector::select_1_type(&offsets));
+}
+
+Mapping XGPath::mapping(size_t offset) {
+    Mapping m;
+    m.mutable_position()->set_node_id(ids[offset]);
+    m.set_is_reverse(directions[offset]);
+    m.set_rank(ranks[offset]);
+    return m;
 }
 
 size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string name) {
@@ -286,7 +302,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
     // need to store node sides
     map<Side, set<Side> > from_to;
     map<Side, set<Side> > to_from;
-    map<string, vector<Traversal> > path_nodes;
+    map<string, vector<Mapping> > path_nodes;
 
     // we can always resize smaller, but not easily extend
     function<void(Graph&)> lambda = [this,
@@ -316,8 +332,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
             const string& name = p.name();
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
-                path_nodes[name].push_back(Traversal(m.position().node_id(),
-                                                     m.is_reverse()));
+                path_nodes[name].push_back(m);
             }
         }
     };
@@ -335,7 +350,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
     // need to store node sides
     map<Side, set<Side> > from_to;
     map<Side, set<Side> > to_from;
-    map<string, vector<Traversal> > path_nodes;
+    map<string, vector<Mapping>> path_nodes;
 
     // we can always resize smaller, but not easily extend
     for (int i = 0; i < graph.node_size(); ++i) {
@@ -360,8 +375,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
         const string& name = p.name();
         for (int j = 0; j < p.mapping_size(); ++j) {
             const Mapping& m = p.mapping(j);
-            path_nodes[name].push_back(Traversal(m.position().node_id(),
-                                                 m.is_reverse()));
+            path_nodes[name].push_back(m);
         }
     }
 
@@ -374,7 +388,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
 void XG::build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
-               map<string, vector<Traversal> >& path_nodes,
+               map<string, vector<Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph) {
 
@@ -549,7 +563,7 @@ void XG::build(map<int64_t, string>& node_label,
         // add path name
         const string& path_name = pathpair.first;
         //cerr << path_name << endl;
-        const vector<Traversal>& walk = pathpair.second;
+        const vector<Mapping>& walk = pathpair.second;
         path_names += start_marker + path_name + end_marker;
         XGPath* path = new XGPath(path_name, walk, entity_count, *this, node_label);
         paths.push_back(path);
@@ -669,6 +683,7 @@ void XG::build(map<int64_t, string>& node_label,
             cerr << path->name << endl;
             cerr << path->members << endl;
             cerr << path->ids << endl;
+            cerr << path->ranks << endl;
             cerr << path->directions << endl;
             cerr << path->positions << endl;
             cerr << path->offsets << endl;
@@ -770,7 +785,7 @@ void XG::build(map<int64_t, string>& node_label,
         cerr << "validating paths" << endl;
         for (auto& pathpair : path_nodes) {
             const string& name = pathpair.first;
-            const vector<Traversal>& path = pathpair.second;
+            const vector<Mapping>& path = pathpair.second;
             size_t prank = path_rank(name);
             //cerr << path_name(prank) << endl;
             assert(path_name(prank) == name);
@@ -782,13 +797,15 @@ void XG::build(map<int64_t, string>& node_label,
             size_t pos = 0;
             size_t in_path = 0;
             for (auto& t : path) {
-                int64_t id = t.id;
-                bool rev = t.rev;
+                int64_t id = t.position().node_id();
+                bool rev = t.is_reverse();
+                // todo rank
                 assert(pe_bv[node_rank_as_entity(id)-1]);
                 assert(dir_bv[in_path] == rev);
                 Node n = node(id);
-                //cerr << id << " in " << name << " at " << node_position_in_path(id, name) << " == " << pos << endl;
-                assert(node_position_in_path(id, name) == pos);
+                //cerr << id << " in " << name << endl;
+                auto p = node_positions_in_path(id, name);
+                assert(std::find(p.begin(), p.end(), pos) != p.end());
                 for (size_t k = 0; k < n.sequence().size(); ++k) {
                     //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
                     assert(id == node_at_path_position(name, pos+k));
@@ -1011,12 +1028,18 @@ vector<size_t> XG::paths_of_edge(int64_t id1, int64_t id2) const {
     return paths_of_entity(edge_rank_as_entity(id1, id2));
 }
 
-map<string, Mapping> XG::node_mappings(int64_t id) const {
-    map<string, Mapping> mappings;
+map<string, vector<Mapping>> XG::node_mappings(int64_t id) const {
+    map<string, vector<Mapping>> mappings;
+    // for each time the node crosses the path
     for (auto i : paths_of_entity(node_rank_as_entity(id))) {
         // get the path name
         string name = path_name(i);
-        mappings[name] = new_mapping(name, id);
+        // get reference to the offset of the mapping in the path
+        // to get the direction and (stored) rank
+        for (auto j : node_ranks_in_path(id, name)) {
+            // nb: path rank is 1-based, path index is 0-based
+            mappings[name].push_back(paths[i-1]->mapping(j));
+        }
     }
     return mappings;
 }
@@ -1098,24 +1121,22 @@ void XG::expand_context(Graph& g, size_t steps, bool add_paths) const {
 // otherwise... owch
 // the paths become disordered due to traversal of the node ids in order
 void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const {
-    // todo use path-relative positions to reorder the paths in the graph
-    map<string, map<size_t, vector<Mapping>>> paths;
+    // map from path name to (map from mapping rank to mapping)
+    map<string, map<size_t, Mapping>> paths;
+    // mappings without 
     map<string, vector<Mapping>> unplaced;
     // use:
     //size_t node_position_in_path(int64_t id, const string& name) const;
 
-    // pick up current paths
+    // pick up current paths in the graph
     for (size_t i = 0; i < g.path_size(); ++i) {
         auto& path = g.path(i);
-        map<size_t, vector<Mapping>>& mappings = paths[path.name()];
         for (size_t j = 0; j < path.mapping_size(); ++j) {
             auto& m = path.mapping(j);
-            if (!m.has_position() || m.position().node_id() == 0) {
-                unplaced[path.name()].push_back(m);
+            if (m.rank()) {
+                paths[path.name()][m.rank()] = m;
             } else {
-                paths[path.name()]
-                    [node_position_in_path(m.position().node_id(), path.name())
-                      +m.position().offset()].push_back(m);
+                unplaced[path.name()].push_back(m);
             }                
         }
     }
@@ -1125,15 +1146,18 @@ void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const {
         auto& node = n.second;
         for (auto& n : node_mappings(id)) {
             auto& name = n.first;
-            auto& m = n.second;
-            if (m.has_position() && m.position().node_id()) {
-                paths[name]
-                     [node_position_in_path(id, name)
-                      +m.position().offset()].push_back(m);
+            for (auto& m : n.second) {
+                if (m.rank()) {
+                    paths[name][m.rank()] = m;
+                } else {
+                    unplaced[name].push_back(m);
+                }
             }
         }
     }
-    // clear graph's paths, as we're possibly resorting them
+    // rebuild graph's paths
+    // NB: mapping ranks allow us to remove this bit
+    // only adding what we haven't seen before
     g.clear_path();
     for (auto& p : paths) {
         auto& name = p.first;
@@ -1141,9 +1165,7 @@ void XG::add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const {
         Path* path = g.add_path();
         path->set_name(name);
         for (auto& n : mappings) {
-            for (auto& m : n.second) {
-                *path->add_mapping() = m;
-            }
+            *path->add_mapping() = n.second;
         }
         if (unplaced.find(name) != unplaced.end()) {
             auto& unp = unplaced[name];
@@ -1208,7 +1230,9 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) con
             Path* new_path = local_paths[m.first];
             // TODO output mapping direction
             //if () { m.second.is_reverse(true); }
-            *new_path->add_mapping() = m.second;
+            for (auto& n : m.second) {
+                *new_path->add_mapping() = n;
+            }
         }
     }
     for (auto& e : edges) {
@@ -1223,31 +1247,41 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) con
 
 size_t XG::node_occs_in_path(int64_t id, const string& name) const {
     size_t p = path_rank(name)-1;
-    auto& pi_wt = paths[path_rank(name)-1]->ids;
-    return pi_wt.rank(pi_wt.size(), id_to_rank(id));
+    auto& pi_wt = paths[p]->ids;
+    return pi_wt.rank(pi_wt.size(), id);
 }
 
-size_t XG::node_position_in_path(int64_t id, const string& name) const {
-    if (node_occs_in_path(id, name) > 1) {
-        // not handled yet...
-        cerr << "warning: path " << name << " contains a loop" << endl;
+vector<size_t> XG::node_ranks_in_path(int64_t id, const string& name) const {
+    vector<size_t> ranks;
+    size_t p = path_rank(name)-1;
+    for (size_t i = 1; i <= node_occs_in_path(id, name); ++i) {
+#pragma omp critical (path_ids)
+        ranks.push_back(paths[p]->ids.select(i, id));
+        auto m = paths[p]->mapping(ranks.back());
     }
+    return ranks;
+}
+
+vector<size_t> XG::node_positions_in_path(int64_t id, const string& name) const {
     auto& path = *paths[path_rank(name)-1];
     auto rank = id_to_rank(id);
-    size_t node_rank_in_path;
-#pragma omp critical (path_ids)
-    node_rank_in_path = path.ids.select(1, rank);
-    return path.positions[node_rank_in_path];
+    vector<size_t> pos_in_path;
+    for (auto i : node_ranks_in_path(id, name)) {
+        pos_in_path.push_back(path.positions[i]);
+    }
+    return pos_in_path;
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
-    auto& path = *paths[path_rank(name)-1];
-    return rank_to_id(path.ids[path.offsets_rank(pos+1)-1]);
+    size_t p = path_rank(name)-1;
+    return paths[p]->ids[paths[p]->offsets_rank(pos+1)-1];
 }
 
-Mapping new_mapping(const string& name, int64_t id) {
+Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse) {
     Mapping m;
     m.mutable_position()->set_node_id(id);
+    m.set_is_reverse(is_reverse);
+    m.set_rank(rank);
     return m;
 }
 
@@ -1282,9 +1316,8 @@ void to_text(ostream& out, Graph& graph) {
         for (size_t j = 0; j < path.mapping_size(); ++j) {
             auto& mapping = path.mapping(i);
             string orientation = mapping.is_reverse() ? "-" : "+";
-            out << "P" << "\t" << mapping.position().node_id()
-                << "\t" << path.name() << "\t"
-                << orientation << endl;
+            out << "P" << "\t" << mapping.position().node_id() << "\t" << path.name() << "\t"
+                << mapping.rank() << "\t" << orientation << "\n";
         }
     }
     for (int i = 0; i < graph.edge_size(); ++i) {

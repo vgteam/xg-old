@@ -49,7 +49,7 @@ public:
     void build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
-               map<string, vector<Traversal> >& path_nodes,
+               map<string, vector<Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph);
     void load(istream& in);
@@ -84,13 +84,14 @@ public:
     vector<size_t> paths_of_entity(size_t rank) const;
     vector<size_t> paths_of_node(int64_t id) const;
     vector<size_t> paths_of_edge(int64_t id1, int64_t id2) const;
-    map<string, Mapping> node_mappings(int64_t id) const;
+    map<string, vector<Mapping>> node_mappings(int64_t id) const;
     bool path_contains_node(const string& name, int64_t id) const;
     bool path_contains_edge(const string& name, int64_t id1, int64_t id2) const;
     bool path_contains_entity(const string& name, size_t rank) const;
     void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
     size_t node_occs_in_path(int64_t id, const string& name) const;
-    size_t node_position_in_path(int64_t id, const string& name) const;
+    vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
+    vector<size_t> node_positions_in_path(int64_t id, const string& name) const;
     int64_t node_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;
 
@@ -185,7 +186,7 @@ public:
     XGPath(void) : member_count(0) { }
     ~XGPath(void) { }
     XGPath(const string& path_name,
-           const vector<Traversal>& path,
+           const vector<Mapping>& path,
            size_t entity_count,
            XG& graph,
            const map<int64_t, string>& node_label);
@@ -195,6 +196,7 @@ public:
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;
+    int_vector<> ranks;
     bit_vector offsets;
     rank_support_v<1> offsets_rank;
     bit_vector::select_1_type offsets_select;
@@ -202,10 +204,11 @@ public:
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "");
+    Mapping mapping(size_t offset); // 0-based
 };
 
 
-Mapping new_mapping(const string& name, int64_t id);
+Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse);
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 void to_text(ostream& out, Graph& graph);
 
