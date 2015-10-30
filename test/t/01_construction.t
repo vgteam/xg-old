@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=..:$PATH # for xg
 
-plan tests 7
+plan tests 8
 
 is $(xg -Vv data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(xg -Vv data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
@@ -20,3 +20,5 @@ is $? 0 "graphs can be compressed even with M"
 xg -Vv data/cyclic_all.vg -o c.idx 2>/dev/null
 is $(xg -c 10 -n 1 -i c.idx -T | grep '-' | wc -l) 2 "graphs with cycles and edges from specific sides can be stored and queried"
 rm c.idx
+
+is $(xg -Vv data/cyclic_path.vg 2>&1 | grep ok | wc -l) 1 "a graph with a path cycle verifies"

@@ -179,6 +179,8 @@ XGPath::XGPath(const string& path_name,
 
     // make the bitvector for path offsets
     util::assign(offsets, bit_vector(path_length));
+    set<int64_t> uniq_nodes;
+    set<pair<int64_t, int64_t>> uniq_edges;
     for (size_t i = 0; i < path.size(); ++i) {
         //cerr << i << endl;
         auto& mapping = path[i];
@@ -191,7 +193,7 @@ XGPath::XGPath(const string& path_name,
         // and the external rank of the mapping
         ranks[i] = mapping.rank();
         // we've seen another entity
-        ++member_count;
+        uniq_nodes.insert(node_id);
         // and record node offset in path
         positions[positions_off++] = path_off;
         // record position of node
@@ -210,12 +212,12 @@ XGPath::XGPath(const string& path_name,
             auto next_node_id = path[i+1].position().node_id();
             if (graph.has_edge(node_id, next_node_id)) {
                 members_bv[graph.edge_rank_as_entity(node_id, next_node_id)-1] = 1;
-                // TODO should we record directions for edges?
-                // why would we?
-                ++member_count;
+                uniq_edges.insert(make_pair(node_id, next_node_id));
             }
         }
     }
+    // set member count as the unique entities that are in the path
+    member_count = uniq_nodes.size() + uniq_edges.size();
     // compress path membership vectors
     util::assign(members, sd_vector<>(members_bv));
     // and traversal information
