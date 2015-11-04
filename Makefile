@@ -9,7 +9,7 @@ CPP_DIR:=cpp
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 OBJ=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
-LD_INCLUDES=-I./ -Icpp -Istream -I$(SRC_DIR)
+LD_INCLUDES=-I./ -Icpp -Istream/src -I$(SRC_DIR)
 LD_LIBS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
 STREAM=stream
 EXE:=xg
@@ -18,7 +18,7 @@ EXE:=xg
 #Some little adjustments to build on OSX
 #(tested with gcc4.9 installed from MacPorts)
 SYS=$(shell uname -s)
-all: $(EXE)
+all: $(BIN_DIR)/$(EXE) $(LIB_DIR)/libxg.a
 
 doc: README.md
 README.md: README.base.md
@@ -32,22 +32,22 @@ README.md: README.base.md
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
 $(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto
 	mkdir -p cpp
-	protoc $(SRC_DIR)/vg.proto --cpp_out=cpp
+	protoc $(SRC_DIR)/vg.proto --proto_path=$(SRC_DIR) --cpp_out=cpp
 
 $(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc
-	$(CXX) $(CXXFLAGS) -c -o cpp/vg.pb.o cpp/vg.pb.cc $(INCLUDES)
+	$(CXX) $(CXXFLAGS) -c -o $(CPP_DIR)/vg.pb.o $(CPP_DIR)/vg.pb.cc $(LD_INCLUDES) $(LD_LIBS)
 
 $(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp 
-	$(CXX) $(CXXFLAGS) $(LD_LIBS) -c -o $(OBJ_DIR)/main.o $(SRC_DIR)/main.cpp $(LD_INCLUDES)
+	$(CXX) $(CXXFLAGS) $(LD_LIBS) -c -o $@ $(SRC_DIR)/main.cpp $(LD_INCLUDES)
 
 $(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h
-	$(CXX) $(CXXFLAGS) -c -o $@ $< $(INCLUDES)
+	$(CXX) $(CXXFLAGS) -c -o $@ $< $(LD_INCLUDES) $(LD_LIBS)
 
-$(EXE): $(OBJ_DIR)/main.o
-	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $< $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
+$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
 
-libxg.a: $(LIBS)
-	ar rs libxg.a $(LIBS)
+$(LIB_DIR)/libxg.a: $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o
+	ar rs $@ $(OBJ_DIR)/xg.o $(CPP_DIR)/vg.pb.o
 
 test:
 	cd test && make
