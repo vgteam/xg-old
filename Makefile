@@ -1,6 +1,7 @@
-.PHONY: all clean test
+.PHONY: all clean test pre
 
 LIB_DIR:=lib
+INC_DIR:=include
 OBJ_DIR:=obj
 BIN_DIR:=bin
 SRC_DIR:=src
@@ -27,27 +28,36 @@ README.md: README.base.md
 	cat README.base.md >README.md
 	cat DESIGN.html | tail -7| perl -p -e 's/<p>/\n/g' | sed 's%</p>%%g' | head -10 >>README.md
 
+pre:
+	if [ ! -d $(BIN_DIR) ]; then mkdir -p $(BIN_DIR); fi
+	if [ ! -d $(LIB_DIR) ]; then mkdir -p $(LIB_DIR); fi
+	if [ ! -d $(OBJ_DIR) ]; then mkdir -p $(OBJ_DIR); fi
+	if [ ! -d $(INC_DIR) ]; then mkdir -p $(INC_DIR); fi
+	if [ ! -d $(CPP_DIR) ]; then mkdir -p $(CPP_DIR); fi
 
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
-$(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto
+$(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
 	mkdir -p cpp
 	protoc $(SRC_DIR)/vg.proto --proto_path=$(SRC_DIR) --cpp_out=cpp
 
-$(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc
+$(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc pre
 	$(CXX) $(CXXFLAGS) -c -o $(CPP_DIR)/vg.pb.o $(CPP_DIR)/vg.pb.cc $(LD_INCLUDES) $(LD_LIBS)
 
-$(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp 
+$(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp pre
 	$(CXX) $(CXXFLAGS) $(LD_LIBS) -c -o $@ $(SRC_DIR)/main.cpp $(LD_INCLUDES)
 
-$(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h
+$(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h pre
 	$(CXX) $(CXXFLAGS) -c -o $@ $< $(LD_INCLUDES) $(LD_LIBS)
 
-$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
+$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre 
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
 
-$(LIB_DIR)/libxg.a: $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o
+$(LIB_DIR)/libxg.a: $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre
 	ar rs $@ $(OBJ_DIR)/xg.o $(CPP_DIR)/vg.pb.o
+
+$(INC_DIR)/stream.h: pre 
+	cd stream && $(MAKE) && cp include/* ../include/
 
 test:
 	cd test && make
@@ -60,3 +70,7 @@ clean:
 	rm -f $(EXECUTABLE)
 	rm -f *.o
 	rm -f libxg.a
+	rm -rf $(INC_DIR)
+	rm -rf $(LIB_DIR)
+	rm -rf $(BIN_DIR)
+	rm -rf $(OBJ_DIR)
