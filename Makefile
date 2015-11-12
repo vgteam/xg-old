@@ -26,7 +26,7 @@ ifeq (${SYS},Darwin)
 tic.
 else
         CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
-        CMAKE_SETPATH=PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
+        CMAKE_SETPATH=PATH=./cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
         STATICFLAGS=-static -static-libstdc++ -static-libgcc -Wl,-Bstatic
 endif
 
@@ -47,7 +47,7 @@ pre:
 	if [ ! -d $(CPP_DIR) ]; then mkdir -p $(CPP_DIR); fi
 
 $(CMAKE_BIN):
-	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+	wget --no-check-certificate http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 	tar xzvf cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 
 proto:
