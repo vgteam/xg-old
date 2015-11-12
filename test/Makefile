@@ -3,7 +3,7 @@
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 
-xg=../xg
+xg=../bin/xg
 
 all: test clean
 
@@ -11,7 +11,7 @@ test: $(xg)
 	prove -v t
 
 $(xg):
-	cd .. && $(MAKE) xg
+	cd .. && $(MAKE) bin/xg
 
 #clean:
 #	rm -f build_graph

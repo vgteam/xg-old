@@ -1,31 +1,36 @@
-.PHONY: all clean test get-deps
+.PHONY: all clean test pre
+
+LIB_DIR:=lib
+INC_DIR:=include
+OBJ_DIR:=obj
+BIN_DIR:=bin
+SRC_DIR:=src
+CPP_DIR:=cpp
 
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
-LIBS=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
-INCLUDES=-I./ -Icpp -Istream/protobuf/build/include -Isdsl-lite/build/include -Isdsl-lite/build/external/libdivsufsort/include -Istream
-LDSEARCH=-L./ -Lstream/protobuf -Lsdsl-lite/build/lib -Lsdsl-lite/build/external/libdivsufsort/lib
-LDFLAGS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
+OBJ=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
+LD_INCLUDES=-I./ -Icpp -Istream/src -I$(SRC_DIR)
+LD_LIBS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
 STREAM=stream
-PROTOBUF=$(STREAM)/protobuf
-LIBPROTOBUF=stream/protobuf/libprotobuf.a
-LIBSDSL=sdsl-lite/build/lib/libsdsl.a
-EXECUTABLE=xg
+EXE:=xg
+CWD:=$(shell pwd)
 
 #Some little adjustments to build on OSX
 #(tested with gcc4.9 installed from MacPorts)
 SYS=$(shell uname -s)
 ifeq (${SYS},Darwin)
-	CMAKE_BIN= # linux binary won't work on os x
-	CMAKE_SETPATH= # mac ports cmake seems to work just fine so leave blank
-	STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as static.
+        CMAKE_BIN= # linux binary won't work on os x
+        CMAKE_SETPATH= # mac ports cmake seems to work just fine so leave blank
+        STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as sta
+tic.
 else
-	CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
-	CMAKE_SETPATH=PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
-	STATICFLAGS=-static -static-libstdc++ -static-libgcc -Wl,-Bstatic
+        CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
+        CMAKE_SETPATH=PATH=./cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
+        STATICFLAGS=-static -static-libstdc++ -static-libgcc -Wl,-Bstatic
 endif
 
-all: $(EXECUTABLE)
+all: $(BIN_DIR)/$(EXE) $(LIB_DIR)/libxg.a
 
 doc: README.md
 README.md: README.base.md
@@ -34,38 +39,50 @@ README.md: README.base.md
 	cat README.base.md >README.md
 	cat DESIGN.html | tail -7| perl -p -e 's/<p>/\n/g' | sed 's%</p>%%g' | head -10 >>README.md
 
-$(LIBPROTOBUF):
-	cd $(STREAM) && $(MAKE)
-
-$(LIBSDSL): $(CMAKE_BIN)
-	$(CMAKE_SETPATH) cmake --version
-	cd sdsl-lite/build && $(CMAKE_SETPATH) cmake .. -Wno-dev && $(MAKE)
-
-cpp/vg.pb.cc: cpp/vg.pb.h
-cpp/vg.pb.h: vg.proto $(LIBPROTOBUF)
-	mkdir -p cpp
-	$(PROTOBUF)/build/bin/protoc vg.proto --cpp_out=cpp
-cpp/vg.pb.o: cpp/vg.pb.h cpp/vg.pb.cc
-	$(CXX) $(CXXFLAGS) -c -o cpp/vg.pb.o cpp/vg.pb.cc $(INCLUDES)
-
-main.o: main.cpp $(LIBSDSL) cpp/vg.pb.h xg.hpp 
-	$(CXX) $(CXXFLAGS) -c -o main.o main.cpp $(INCLUDES)
-
-xg.o: xg.cpp xg.hpp $(LIBSDSL) cpp/vg.pb.h
-	$(CXX) $(CXXFLAGS) -c -o xg.o xg.cpp $(INCLUDES)
-
-$(EXECUTABLE): $(LIBS) main.o
-	$(CXX) $(CXXFLAGS) -o $(EXECUTABLE) $(LIBS) main.o $(INCLUDES) $(LDSEARCH) $(STATICFLAGS) $(LDFLAGS)
-
-libxg.a: $(LIBS)
-	ar rs libxg.a $(LIBS)
+pre:
+	if [ ! -d $(BIN_DIR) ]; then mkdir -p $(BIN_DIR); fi
+	if [ ! -d $(LIB_DIR) ]; then mkdir -p $(LIB_DIR); fi
+	if [ ! -d $(OBJ_DIR) ]; then mkdir -p $(OBJ_DIR); fi
+	if [ ! -d $(INC_DIR) ]; then mkdir -p $(INC_DIR); fi
+	if [ ! -d $(CPP_DIR) ]; then mkdir -p $(CPP_DIR); fi
 
 $(CMAKE_BIN):
-	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+	wget --no-check-certificate http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 	tar xzvf cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 
-get-deps: $(CMAKE_BIN)
+proto:
+	git clone https://github.com/google/protobuf.git
+	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 
+sdsl: $(CMAKE_BIN)
+	git clone https://github.com/simongog/sdsl-lite.git
+	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
+	
+
+get-deps: $(CMAKE_BIN) proto sdsl
+
+$(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
+$(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
+	mkdir -p cpp
+	protoc $(SRC_DIR)/vg.proto --proto_path=$(SRC_DIR) --cpp_out=cpp
+
+$(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc pre
+	$(CXX) $(CXXFLAGS) -c -o $(CPP_DIR)/vg.pb.o $(CPP_DIR)/vg.pb.cc $(LD_INCLUDES) $(LD_LIBS)
+
+$(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp pre
+	$(CXX) $(CXXFLAGS) $(LD_LIBS) -c -o $@ $(SRC_DIR)/main.cpp $(LD_INCLUDES)
+
+$(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h pre
+	$(CXX) $(CXXFLAGS) -c -o $@ $< $(LD_INCLUDES) $(LD_LIBS)
+
+$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre 
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
+
+$(LIB_DIR)/libxg.a: $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre
+	ar rs $@ $(OBJ_DIR)/xg.o $(CPP_DIR)/vg.pb.o
+
+$(INC_DIR)/stream.h: pre 
+	cd stream && $(MAKE) && cp include/* ../include/
 
 test:
 	cd test && make
@@ -78,6 +95,7 @@ clean:
 	rm -f $(EXECUTABLE)
 	rm -f *.o
 	rm -f libxg.a
-	rm $(LIBPROTOBUF)
-	cd $(PROTOBUF) && $(MAKE) clean && rm -rf build
-	rm -rf cmake-3.3.0-rc2-Linux-x86_64.tar.gz cmake-3.3.0-rc2-Linux-x86_64
+	rm -rf $(INC_DIR)
+	rm -rf $(LIB_DIR)
+	rm -rf $(BIN_DIR)
+	rm -rf $(OBJ_DIR)
