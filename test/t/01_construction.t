@@ -3,7 +3,7 @@
 BASH_TAP_ROOT=../bash-tap
 . ../bash-tap/bash-tap-bootstrap
 
-PATH=..:$PATH # for xg
+PATH=../bin:$PATH # for xg
 
 plan tests 8
 
