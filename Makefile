@@ -56,7 +56,7 @@ proto:
 
 sdsl: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
-	cd sdsl-lite && ./install.sh $(CWD)
+	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
 	
 
 get-deps: $(CMAKE_BIN) proto sdsl
