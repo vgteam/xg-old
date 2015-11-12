@@ -19,6 +19,17 @@ CWD:=$(shell pwd)
 #Some little adjustments to build on OSX
 #(tested with gcc4.9 installed from MacPorts)
 SYS=$(shell uname -s)
+ifeq (${SYS},Darwin)
+        CMAKE_BIN= # linux binary won't work on os x
+        CMAKE_SETPATH= # mac ports cmake seems to work just fine so leave blank
+        STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as sta
+tic.
+else
+        CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
+        CMAKE_SETPATH=PATH=../../cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
+        STATICFLAGS=-static -static-libstdc++ -static-libgcc -Wl,-Bstatic
+endif
+
 all: $(BIN_DIR)/$(EXE) $(LIB_DIR)/libxg.a
 
 doc: README.md
@@ -43,7 +54,7 @@ proto:
 	git clone https://github.com/google/protobuf.git
 	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 
-sdsl:
+sdsl: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
 	cd sdsl-lite && ./install.sh $(CWD)
 	
