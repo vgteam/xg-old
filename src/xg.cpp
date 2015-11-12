@@ -189,7 +189,7 @@ XGPath::XGPath(const string& path_name,
         // record node
         members_bv[graph.node_rank_as_entity(node_id)-1] = 1;
         // record direction of passage through node
-        directions_bv[i] = mapping.is_reverse();
+        directions_bv[i] = mapping.position().is_reverse();
         // and the external rank of the mapping
         ranks[i] = mapping.rank();
         // we've seen another entity
@@ -235,9 +235,11 @@ XGPath::XGPath(const string& path_name,
 }
 
 Mapping XGPath::mapping(size_t offset) {
+    // TODO actually store the "real" mapping
     Mapping m;
+    // store the starting position and series of edits
     m.mutable_position()->set_node_id(ids[offset]);
-    m.set_is_reverse(directions[offset]);
+    m.mutable_position()->set_is_reverse(directions[offset]);
     m.set_rank(ranks[offset]);
     return m;
 }
@@ -800,7 +802,7 @@ void XG::build(map<int64_t, string>& node_label,
             size_t in_path = 0;
             for (auto& t : path) {
                 int64_t id = t.position().node_id();
-                bool rev = t.is_reverse();
+                bool rev = t.position().is_reverse();
                 // todo rank
                 assert(pe_bv[node_rank_as_entity(id)-1]);
                 assert(dir_bv[in_path] == rev);
@@ -1288,7 +1290,7 @@ Mapping XG::mapping_at_path_position(const string& name, size_t pos) const {
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse) {
     Mapping m;
     m.mutable_position()->set_node_id(id);
-    m.set_is_reverse(is_reverse);
+    m.mutable_position()->set_is_reverse(is_reverse);
     m.set_rank(rank);
     return m;
 }
@@ -1323,7 +1325,7 @@ void to_text(ostream& out, Graph& graph) {
         auto& path = graph.path(i);
         for (size_t j = 0; j < path.mapping_size(); ++j) {
             auto& mapping = path.mapping(i);
-            string orientation = mapping.is_reverse() ? "-" : "+";
+            string orientation = mapping.position().is_reverse() ? "-" : "+";
             out << "P" << "\t" << mapping.position().node_id() << "\t" << path.name() << "\t"
                 << mapping.rank() << "\t" << orientation << "\n";
         }
