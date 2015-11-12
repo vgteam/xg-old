@@ -14,7 +14,7 @@ LD_INCLUDES=-I./ -Icpp -Istream/src -I$(SRC_DIR)
 LD_LIBS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
 STREAM=stream
 EXE:=xg
-
+CWD:=$(shell pwd)
 
 #Some little adjustments to build on OSX
 #(tested with gcc4.9 installed from MacPorts)
@@ -35,6 +35,20 @@ pre:
 	if [ ! -d $(INC_DIR) ]; then mkdir -p $(INC_DIR); fi
 	if [ ! -d $(CPP_DIR) ]; then mkdir -p $(CPP_DIR); fi
 
+$(CMAKE_BIN):
+	wget http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+	tar xzvf cmake-3.3.0-rc2-Linux-x86_64.tar.gz
+
+proto:
+	git clone https://github.com/google/protobuf.git
+	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
+
+sdsl:
+	git clone https://github.com/simongog/sdsl-lite.git
+	cd sdsl-lite && ./install.sh $(CWD)
+	
+
+get-deps: $(CMAKE_BIN) proto sdsl
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
 $(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
