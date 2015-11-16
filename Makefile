@@ -50,16 +50,16 @@ $(CMAKE_BIN):
 	wget --no-check-certificate http://www.cmake.org/files/v3.3/cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 	tar xzvf cmake-3.3.0-rc2-Linux-x86_64.tar.gz
 
-proto:
+protobuf/:
 	git clone https://github.com/google/protobuf.git
-	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 
 sdsl: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
-	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
 	
 
-get-deps: $(CMAKE_BIN) proto sdsl
+get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/
+	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
+	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
 $(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
