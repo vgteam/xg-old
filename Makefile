@@ -53,13 +53,13 @@ $(CMAKE_BIN):
 protobuf/:
 	git clone https://github.com/google/protobuf.git
 
-sdsl: $(CMAKE_BIN)
+sdsl-lite: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
 	
 
 get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/
-	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
-	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
+	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
+	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout 25b20b0 && ./install.sh $(CWD)
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
 $(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
