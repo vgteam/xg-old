@@ -52,10 +52,10 @@ $(CMAKE_BIN):
 
 proto:
 	git clone https://github.com/google/protobuf.git
-	cd protobuf && ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
+	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 
 sdsl: $(CMAKE_BIN)
-	git clone https://github.com/simongog/sdsl-lite.git
+	git clone https://github.com/simongog/sdsl-lite.git && git checkout 25b20b0
 	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && ./install.sh $(CWD)
 	
 
