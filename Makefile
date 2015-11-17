@@ -53,7 +53,7 @@ $(CMAKE_BIN):
 protobuf/:
 	git clone https://github.com/google/protobuf.git
 
-sdsl-lite: $(CMAKE_BIN)
+sdsl-lite/: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
 	
 
