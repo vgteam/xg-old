@@ -22,8 +22,7 @@ SYS=$(shell uname -s)
 ifeq (${SYS},Darwin)
         CMAKE_BIN= # linux binary won't work on os x
         CMAKE_SETPATH= # mac ports cmake seems to work just fine so leave blank
-        STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as sta
-tic.
+        STATICFLAGS= # -static doesn't work on OSX unless libgcc compiled as static.
 else
         CMAKE_BIN=cmake-3.3.0-rc2-Linux-x86_64/bin/cmake
         CMAKE_SETPATH=PATH=./cmake-3.3.0-rc2-Linux-x86_64/bin/:${PATH}
