@@ -49,7 +49,7 @@ public:
     void build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
-               map<string, vector<Mapping>>& path_nodes,
+               map<string, map<int, Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph);
     void load(istream& in);
@@ -72,10 +72,10 @@ public:
     vector<Edge> edges_on_start(int64_t id) const;
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
-    size_t edge_rank_as_entity(int64_t id1, int64_t id2) const;
+    size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
-    bool has_edge(int64_t id1, int64_t id2) const;
+    bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
 
     Path path(const string& name) const;
     size_t path_rank(const string& name) const;
@@ -83,10 +83,12 @@ public:
     string path_name(size_t rank) const;
     vector<size_t> paths_of_entity(size_t rank) const;
     vector<size_t> paths_of_node(int64_t id) const;
-    vector<size_t> paths_of_edge(int64_t id1, int64_t id2) const;
+    vector<size_t> paths_of_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
     map<string, vector<Mapping>> node_mappings(int64_t id) const;
     bool path_contains_node(const string& name, int64_t id) const;
-    bool path_contains_edge(const string& name, int64_t id1, int64_t id2) const;
+    bool path_contains_edge(const string& name,
+                            int64_t id1, bool from_start,
+                            int64_t id2, bool to_end) const;
     bool path_contains_entity(const string& name, size_t rank) const;
     void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
     size_t node_occs_in_path(int64_t id, const string& name) const;

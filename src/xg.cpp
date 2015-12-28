@@ -180,11 +180,13 @@ XGPath::XGPath(const string& path_name,
     // make the bitvector for path offsets
     util::assign(offsets, bit_vector(path_length));
     set<int64_t> uniq_nodes;
-    set<pair<int64_t, int64_t>> uniq_edges;
+    set<pair<pair<int64_t, bool>, pair<int64_t, bool>>> uniq_edges;
+    cerr << "path " << path_name << " has " << path.size() << endl;
     for (size_t i = 0; i < path.size(); ++i) {
         //cerr << i << endl;
         auto& mapping = path[i];
         auto node_id = mapping.position().node_id();
+        bool is_reverse = mapping.position().is_reverse();
         //cerr << node_id << endl;
         // record node
         members_bv[graph.node_rank_as_entity(node_id)-1] = 1;
@@ -210,13 +212,34 @@ XGPath::XGPath(const string& path_name,
         // find the next edge in the path, and record it
         if (i+1 < path.size()) { // but only if there is a next node
             auto next_node_id = path[i+1].position().node_id();
-            if (graph.has_edge(node_id, next_node_id)) {
-                members_bv[graph.edge_rank_as_entity(node_id, next_node_id)-1] = 1;
-                uniq_edges.insert(make_pair(node_id, next_node_id));
+            bool next_is_reverse = path[i+1].position().is_reverse();
+            //cerr << "checking if we have the edge" << endl;
+            int64_t id1, id2;
+            bool rev1, rev2;
+            if (is_reverse && next_is_reverse) {
+                id1 = next_node_id; id2 = node_id;
+                rev1 = false; rev2 = false;
+            } else {
+                id1 = node_id; id2 = next_node_id;
+                rev1 = is_reverse; rev2 = next_is_reverse;
+            }
+            if (graph.has_edge(id1, rev1, id2, rev2)) {
+                members_bv[graph.edge_rank_as_entity(id1, rev1, id2, rev2)-1] = 1;
+                uniq_edges.insert(
+                    make_pair(
+                        make_pair(id1, rev1),
+                        make_pair(id2, rev2)));
+            } else {
+                cerr << "graph does not have edge from "
+                     << node_id << (path[i].position().is_reverse()?"+":"-")
+                     << " to "
+                     << next_node_id << (path[i+1].position().is_reverse()?"-":"+")
+                     << endl;
             }
         }
     }
     // set member count as the unique entities that are in the path
+    cerr << uniq_nodes.size() << " vs " << path.size() << endl;
     member_count = uniq_nodes.size() + uniq_edges.size();
     // compress path membership vectors
     util::assign(members, sd_vector<>(members_bv));
@@ -306,7 +329,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
     // need to store node sides
     map<Side, set<Side> > from_to;
     map<Side, set<Side> > to_from;
-    map<string, vector<Mapping> > path_nodes;
+    map<string, map<int, Mapping> > path_nodes;
 
     // we can always resize smaller, but not easily extend
     function<void(Graph&)> lambda = [this,
@@ -336,7 +359,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
             const string& name = p.name();
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
-                path_nodes[name].push_back(m);
+                path_nodes[name][m.rank()] = m;
             }
         }
     };
@@ -354,7 +377,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
     // need to store node sides
     map<Side, set<Side> > from_to;
     map<Side, set<Side> > to_from;
-    map<string, vector<Mapping>> path_nodes;
+    map<string, map<int, Mapping>> path_nodes;
 
     // we can always resize smaller, but not easily extend
     for (int i = 0; i < graph.node_size(); ++i) {
@@ -379,7 +402,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
         const string& name = p.name();
         for (int j = 0; j < p.mapping_size(); ++j) {
             const Mapping& m = p.mapping(j);
-            path_nodes[name].push_back(m);
+            path_nodes[name][m.rank()] = m;
         }
     }
 
@@ -392,7 +415,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
 void XG::build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
-               map<string, vector<Mapping>>& path_nodes,
+               map<string, map<int, Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph) {
 
@@ -566,8 +589,11 @@ void XG::build(map<int64_t, string>& node_label,
     for (auto& pathpair : path_nodes) {
         // add path name
         const string& path_name = pathpair.first;
-        //cerr << path_name << endl;
-        const vector<Mapping>& walk = pathpair.second;
+        cerr << path_name << endl;
+        vector<Mapping> walk;
+        for (auto& m : pathpair.second) {
+            walk.push_back(m.second);
+        }
         path_names += start_marker + path_name + end_marker;
         XGPath* path = new XGPath(path_name, walk, entity_count, *this, node_label);
         paths.push_back(path);
@@ -601,20 +627,13 @@ void XG::build(map<int64_t, string>& node_label,
         ep_iv[ep_off++] = 0; // null so we can detect entities with no path membership
         for (size_t j = 0; j < paths.size(); ++j) {
             if (paths[j]->members[i] == 1) {
-                /*
-                if (entity_is_node(i+1)) {
-                    cerr << "node " << rank_to_id(entity_rank_as_node_rank(i+1)) << " is in path " << j+1 << endl;
-                } else {
-                    cerr << "edge " << " is in path " << j+1 << endl;
-                }
-                */
                 ep_iv[ep_off++] = j+1;
             }
         }
     }
 
     util::bit_compress(ep_iv);
-    //cerr << ep_off << " " << path_entities << " " << entity_count << endl;
+    cerr << ep_off << " " << path_entities << " " << entity_count << endl;
     assert(ep_off == path_entities+entity_count);
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
@@ -789,7 +808,7 @@ void XG::build(map<int64_t, string>& node_label,
         cerr << "validating paths" << endl;
         for (auto& pathpair : path_nodes) {
             const string& name = pathpair.first;
-            const vector<Mapping>& path = pathpair.second;
+            auto& path = pathpair.second;
             size_t prank = path_rank(name);
             //cerr << path_name(prank) << endl;
             assert(path_name(prank) == name);
@@ -801,8 +820,9 @@ void XG::build(map<int64_t, string>& node_label,
             size_t pos = 0;
             size_t in_path = 0;
             for (auto& t : path) {
-                int64_t id = t.position().node_id();
-                bool rev = t.position().is_reverse();
+                auto& m = t.second;
+                int64_t id = m.position().node_id();
+                bool rev = m.position().is_reverse();
                 // todo rank
                 assert(pe_bv[node_rank_as_entity(id)-1]);
                 assert(dir_bv[in_path] == rev);
@@ -948,34 +968,53 @@ size_t XG::entity_rank_as_node_rank(size_t rank) const {
 }
 
 // snoop through the forward table to check if the edge exists
-bool XG::has_edge(int64_t id1, int64_t id2) const {
+bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
+    // invert the edge if we are doubly-reversed
+    // this has the same meaning
+    // ...confused
+    /*
+    if (from_start && to_end) {
+        int64_t tmp = id1;
+        id1 = id2; id2 = tmp;
+        from_start = false;
+        to_end = false;
+    }
+    */
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
     size_t f_start = f_bv_select(rank1);
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
     for (size_t i = f_start; i < f_end; ++i) {
-        if (rank2 == f_iv[i]) {
+        if (rank2 == f_iv[i]
+            && f_from_start_cbv[i] == from_start
+            && f_to_end_cbv[i] == to_end) {
             return true;
         }
     }
     return false;
 }
 
-size_t XG::edge_rank_as_entity(int64_t id1, int64_t id2) const {
+size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
-    //cerr << "Finding rank for " << id1 << "(" << rank1 << ") " << " -> " << id2 << "(" << rank2 << ")"<< endl;
+    /*
+    cerr << "Finding rank for "
+         << id1 << (from_start?"+":"-") << " (" << rank1 << ") " << " -> "
+         << id2 << (to_end?"-":"+") << " (" << rank2 << ")"<< endl;
+    */
     size_t f_start = f_bv_select(rank1);
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
     //cerr << f_start << " to " << f_end << endl;
     for (size_t i = f_start; i < f_end; ++i) {
         //cerr << f_iv[i] << endl;
-        if (rank2 == f_iv[i]) {
+        if (rank2 == f_iv[i]
+            && f_from_start_cbv[i] == from_start
+            && f_to_end_cbv[i] == to_end) {
             //cerr << i << endl;
             return i+1;
         }
     }
-    cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
+    //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
     assert(false);
 }
 
@@ -1011,8 +1050,8 @@ bool XG::path_contains_node(const string& name, int64_t id) const {
     return path_contains_entity(name, node_rank_as_entity(id));
 }
 
-bool XG::path_contains_edge(const string& name, int64_t id1, int64_t id2) const {
-    return path_contains_entity(name, edge_rank_as_entity(id1, id2));
+bool XG::path_contains_edge(const string& name, int64_t id1, bool from_start, int64_t id2, bool to_end) const {
+    return path_contains_entity(name, edge_rank_as_entity(id1, from_start, id2, to_end));
 }
 
 vector<size_t> XG::paths_of_entity(size_t rank) const {
@@ -1029,8 +1068,8 @@ vector<size_t> XG::paths_of_node(int64_t id) const {
     return paths_of_entity(node_rank_as_entity(id));
 }
 
-vector<size_t> XG::paths_of_edge(int64_t id1, int64_t id2) const {
-    return paths_of_entity(edge_rank_as_entity(id1, id2));
+vector<size_t> XG::paths_of_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
+    return paths_of_entity(edge_rank_as_entity(id1, from_start, id2, to_end));
 }
 
 map<string, vector<Mapping>> XG::node_mappings(int64_t id) const {
