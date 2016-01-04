@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=../bin:$PATH # for xg
 
-plan tests 8
+plan tests 9
 
 is $(xg -Vv data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(xg -Vv data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
@@ -22,3 +22,5 @@ is $(xg -c 10 -n 1 -i c.idx -T | grep '-' | wc -l) 2 "graphs with cycles and edg
 rm c.idx
 
 is $(xg -Vv data/cyclic_path.vg 2>&1 | grep ok | wc -l) 1 "a graph with a path cycle verifies"
+
+is $(xg -Vv data/b.vg 2>&1 | grep ok | wc -l) 1 "a graph with doubly-reversing edges validates"

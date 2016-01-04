@@ -181,7 +181,7 @@ XGPath::XGPath(const string& path_name,
     util::assign(offsets, bit_vector(path_length));
     set<int64_t> uniq_nodes;
     set<pair<pair<int64_t, bool>, pair<int64_t, bool>>> uniq_edges;
-    cerr << "path " << path_name << " has " << path.size() << endl;
+    //cerr << "path " << path_name << " has " << path.size() << endl;
     for (size_t i = 0; i < path.size(); ++i) {
         //cerr << i << endl;
         auto& mapping = path[i];
@@ -239,7 +239,7 @@ XGPath::XGPath(const string& path_name,
         }
     }
     // set member count as the unique entities that are in the path
-    cerr << uniq_nodes.size() << " vs " << path.size() << endl;
+    //cerr << uniq_nodes.size() << " vs " << path.size() << endl;
     member_count = uniq_nodes.size() + uniq_edges.size();
     // compress path membership vectors
     util::assign(members, sd_vector<>(members_bv));
@@ -589,7 +589,7 @@ void XG::build(map<int64_t, string>& node_label,
     for (auto& pathpair : path_nodes) {
         // add path name
         const string& path_name = pathpair.first;
-        cerr << path_name << endl;
+        //cerr << path_name << endl;
         vector<Mapping> walk;
         for (auto& m : pathpair.second) {
             walk.push_back(m.second);
@@ -624,7 +624,8 @@ void XG::build(map<int64_t, string>& node_label,
     size_t ep_off = 0;
     for (size_t i = 0; i < entity_count; ++i) {
         ep_bv[ep_off] = 1;
-        ep_iv[ep_off++] = 0; // null so we can detect entities with no path membership
+        ep_iv[ep_off] = 0; // null so we can detect entities with no path membership
+        ++ep_off;
         for (size_t j = 0; j < paths.size(); ++j) {
             if (paths[j]->members[i] == 1) {
                 ep_iv[ep_off++] = j+1;
@@ -633,8 +634,8 @@ void XG::build(map<int64_t, string>& node_label,
     }
 
     util::bit_compress(ep_iv);
-    cerr << ep_off << " " << path_entities << " " << entity_count << endl;
-    assert(ep_off == path_entities+entity_count);
+    //cerr << ep_off << " " << path_entities << " " << entity_count << endl;
+    assert(ep_off <= path_entities+entity_count);
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
 
@@ -650,7 +651,7 @@ void XG::build(map<int64_t, string>& node_label,
     cerr << "|t_bv| = " << size_in_mega_bytes(t_bv) << endl;
 
     cerr << "|i_iv| = " << size_in_mega_bytes(i_iv) << endl;
-    cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
+    //cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
 
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
 
@@ -682,7 +683,7 @@ void XG::build(map<int64_t, string>& node_label,
         + size_in_mega_bytes(f_bv)
         + size_in_mega_bytes(t_bv)
         + size_in_mega_bytes(i_iv)
-        + size_in_mega_bytes(i_wt)
+        //+ size_in_mega_bytes(i_wt)
         + size_in_mega_bytes(s_cbv)
         + paths_mb_size
         ) << endl;
