@@ -229,6 +229,13 @@ XGPath::XGPath(const string& path_name,
                     make_pair(
                         make_pair(id1, rev1),
                         make_pair(id2, rev2)));
+            } else if (graph.has_edge(id2, !rev2, id1, !rev1)) {
+                members_bv[graph.edge_rank_as_entity(id2, !rev2, id1, !rev1)-1] = 1;
+                uniq_edges.insert(
+                    make_pair(
+                        make_pair(id2, !rev2),
+                        make_pair(id1, !rev1)
+                        ));
             } else {
                 cerr << "graph does not have edge from "
                      << node_id << (path[i].position().is_reverse()?"+":"-")
