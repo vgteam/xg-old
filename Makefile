@@ -10,7 +10,7 @@ CPP_DIR:=cpp
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 OBJ=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
-LD_INCLUDES=-I./ -Icpp -Istream/src -I$(SRC_DIR)
+LD_INCLUDES=-I./ -Icpp -Istream/src -IDYNAMIC/include -IDYNAMIC/include/internal -IDYNAMIC/include/algorithms -I$(SRC_DIR)
 LD_LIBS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
 STREAM=stream
 EXE:=xg
@@ -54,9 +54,12 @@ protobuf/:
 
 sdsl-lite/: $(CMAKE_BIN)
 	git clone https://github.com/simongog/sdsl-lite.git
-	
 
-get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/
+DYNAMIC/:
+	git clone --recursive https://github.com/vgteam/DYNAMIC.git
+	cd DYNAMIC && git checkout cfd3ae7
+
+get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/
 	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout 25b20b0 && ./install.sh $(CWD)
 

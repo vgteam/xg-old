@@ -14,7 +14,7 @@
 //#include "sdsl/csa_bitcompressed.hpp"
 #include "sdsl/csa_wt.hpp"
 #include "sdsl/suffix_arrays.hpp"
-
+#include "dynamic.hpp"
 
 namespace xg {
 
@@ -108,6 +108,10 @@ public:
     void get_connected_nodes(Graph& g) const;
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
+    // gPBWT interface
+    // insert a thread
+    void insert_thread(const Path& t);
+
     
     char start_marker;
     char end_marker;
@@ -182,6 +186,12 @@ private:
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
+
+    // the gPBWT
+    dyn::rle_str bs_iv;
+    // backs the h(n) and h(e) functions
+    int_vector<> h_iv;
+
 };
 
 class XGPath {
