@@ -107,6 +107,10 @@ void XG::load(istream& in) {
     ep_bv.load(in);
     ep_bv_rank.load(in, &ep_bv);
     ep_bv_select.load(in, &ep_bv);
+    
+    h_iv.load(in);
+    ts_iv.load(in);
+    bs_iv = deserialize(in);
 }
 
 void XGPath::load(istream& in) {
@@ -323,6 +327,10 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += ep_bv.serialize(out, child, "entity_path_mapping_starts");
     written += ep_bv_rank.serialize(out, child, "entity_path_mapping_starts_rank");
     written += ep_bv_select.serialize(out, child, "entity_path_mapping_starts_select");
+
+    written += h_iv.serialize(out, child, "thread_usage_count");
+    written += ts_iv.serialize(out, child, "thread_start_count");
+    written += xg::serialize(bs_iv, out, child, "benedict_arrays");
 
     sdsl::structure_tree::add_size(child, written);
     return written;
@@ -1453,6 +1461,36 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // all the threads that come in via earlier edges, and all the previous
     // threads going there that come via this edge.
     return new_visit_offset;
+}
+
+size_t serialize(dyn::rle_str& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
+    size_t written = 0;
+    
+    // Convert the dynamic int vector to an SDSL int vector
+    int_vector<> converted(to_serialize.size());
+    
+    for(size_t i = 0; i < to_serialize.size(); i++) {
+        converted[i] = to_serialize.at(i);
+    }
+    
+    written += converted.serialize(out, child, name);
+    
+    return written;
+}
+
+dyn::rle_str deserialize(istream& in) {
+
+    int_vector<> to_convert;
+
+    to_convert.load(in);
+    
+    dyn::rle_str converted;
+    
+    for(size_t i = 0; i < to_convert.size(); i++) {
+        converted.push_back(to_convert[i]);
+    }
+    
+    return converted;
 }
 
 }
