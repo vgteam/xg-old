@@ -667,6 +667,53 @@ void XG::build(map<int64_t, string>& node_label,
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
 
+#ifdef VERBOSE_DEBUG
+    cerr << "storing threads" << endl;
+#endif
+    
+    // Just store all the paths that are all perfect mappings as threads.
+    // We end up converting *back* into Path objects.
+    for (auto& pathpair : path_nodes) {
+        Path reconstructed;
+        
+        // Grab the name
+        reconstructed.set_name(pathpair.first);
+        
+        bool all_perfect = true;
+        
+        // Grab the Mappings, which are now sorted by rank
+        for (auto& m : pathpair.second) {
+            *reconstructed.add_mapping() = m.second;
+            
+            // Make sure the mapping is perfect
+            // TODO: handle offsets
+            if(m.second.edit_size() > 1) {
+                // Not a perfect mapping
+                all_perfect = false;
+                break;
+            } else if(m.second.edit_size() == 0) {
+                // Is a perfect mapping
+                continue;
+            } else {
+                // We have exactly one edit. Is it perfect?
+                auto edit = m.second.edit(0);
+                
+                if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
+                    // The edit calls for actual editing
+                    all_perfect = false;
+                    break;
+                }
+            }
+        }
+        
+        if(all_perfect) {
+            // We actually want to insert this path as a thread
+            insert_thread(reconstructed);
+        }
+        
+    }
+    
+
 #ifdef DEBUG_CONSTRUCTION
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
@@ -682,6 +729,9 @@ void XG::build(map<int64_t, string>& node_label,
     //cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
 
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
+    
+    cerr << "|h_iv| = " << size_in_mega_bytes(h_iv) << endl;
+    cerr << "|ts_iv| = " << size_in_mega_bytes(ts_iv) << endl;
 
     long double paths_mb_size = 0;
     cerr << "|pn_iv| = " << size_in_mega_bytes(pn_iv) << endl;
@@ -713,6 +763,9 @@ void XG::build(map<int64_t, string>& node_label,
         + size_in_mega_bytes(i_iv)
         //+ size_in_mega_bytes(i_wt)
         + size_in_mega_bytes(s_cbv)
+        + size_in_mega_bytes(h_iv)
+        + size_in_mega_bytes(ts_iv)
+        // TODO: add in size of the dynamic bs_iv
         + paths_mb_size
         ) << endl;
 
@@ -1445,7 +1498,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         }
         
         // Otherwise add in the threads on this edge to the offset.
-        new_visit_offset += h_iv[edge_rank_as_entity(edge)];
+        new_visit_offset += h_iv[edge_rank_as_entity(edge) - 1];
     }
     
     // Where does the B_s[] range for the side we're leaving start?
@@ -1468,6 +1521,9 @@ void XG::insert_thread(const Path& t) {
     
     auto insert_thread_forward = [&](const Path& thread) {
     
+#ifdef debug
+        cerr << "Inserting thread " << thread.name() << " with " << thread.mapping_size() << " mappings" << endl;
+#endif
         // Where does the current visit fall on its node? On the first node we
         // arbitrarily decide to be first of all the threads starting there.
         // TODO: Make sure that we actually end up ordering starts based on path
@@ -1480,14 +1536,21 @@ void XG::insert_thread(const Path& t) {
             int64_t node_id = thread.mapping(i).position().node_id();
             bool node_is_reverse = thread.mapping(i).position().is_reverse();
             int64_t node_side = id_to_rank(node_id) * 2 + node_is_reverse;
+            
+#ifdef debug
+            cerr << "Visit side " << node_side << endl;
+#endif
 
             // Where are we going next?
             
             if(i == thread.mapping_size() - 1) {
                 // This is the last visit. Send us off to null
                 
+#ifdef debug
+                cerr << "End the thread." << endl;
+#endif
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + visit_offset, NULL_SIDE);
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, NULL_SIDE);
             } else {
                 // This is not the last visit. Send us off to the next place, and update the count on the edge.
                 
@@ -1496,19 +1559,48 @@ void XG::insert_thread(const Path& t) {
                 bool next_is_reverse = thread.mapping(i + 1).position().is_reverse();
                 int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
 
+#ifdef debug
+                cerr << "Proceed to " << next_side << endl;
+
+                cerr << "Will go in entry " << bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset << " of " << bs_iv.size() << endl;
+            
+                for(size_t j = 0; j < bs_iv.size(); j++) {
+                    cerr << bs_iv.at(j) << "; ";
+                }
+                cerr << endl;
+#endif 
+
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + visit_offset, next_side);
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, next_side);
                 
                 // Update the usage count for the edge going form here to the next node
-                h_iv[edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse)]++;
+                // Make sure that edge storage direction is correct.
+                if(has_edge(node_id, node_is_reverse, next_id, next_is_reverse)) {
+                    h_iv[edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse) - 1]++;
+                } else {
+                    h_iv[edge_rank_as_entity(next_id, !next_is_reverse, node_id, !node_is_reverse) - 1]++;
+                }
                 
                 // Now where do we go to on the next visit?
                 visit_offset = where_to(node_side, visit_offset, next_side);
                 
+#ifdef debug
+                cerr << "Offset " << visit_offset << " at side " << next_side << endl;
+#endif
+                
             }
             
+#ifdef debug
+            cerr << "Node " << node_id << " has rank " << node_rank_as_entity(node_id) << " of " << h_iv.size() << endl;
+#endif
+            
             // Increment the usage count of the node
-            h_iv[node_rank_as_entity(node_id)]++;
+            h_iv[node_rank_as_entity(node_id) - 1]++;
+            
+            if(i == 0) {
+                // The thread starts here
+                ts_iv[node_side]++;
+            }
         }
         
     };

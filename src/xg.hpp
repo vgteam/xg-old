@@ -243,6 +243,8 @@ private:
     // f_iv), the usage count (i.e. the number of times it is visited by encoded
     // threads). This doesn't have to be dynamic since the length will never
     // change.
+    // Remember that entity ranks are 1-based, so if you have an entity rank you
+    // have to subtract 1 to get its position here.
     int_vector<> h_iv;
     
     // This (as an extension to the algorithm described in the paper) holds the
