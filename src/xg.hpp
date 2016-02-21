@@ -73,6 +73,7 @@ public:
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
+    size_t edge_rank_as_entity(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
@@ -255,8 +256,15 @@ private:
     // This holds the concatenated Benedict arrays (holding the next node's
     // entry side visited after the current entry side for the threads sorted in
     // reverse prefix lexicographic order). They are separated with 1s, with 0s
-    // noting the null side (i.e. the thread ends at this node).
+    // noting the null side (i.e. the thread ends at this node). To find where
+    // the range for a side starts, subtract 2 from the side (to get its 0-based
+    // rank among real sides), select that separator position, and add 1 to get
+    // to the first B_s array entry (if any) for the side.
     dynamic_int_vector bs_iv;
+    
+    // Constants used as sentinels in bs_iv above.
+    const static int64_t BS_SEPARATOR = 1;
+    const static int64_t NULL_SIDE = 0;
     
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to

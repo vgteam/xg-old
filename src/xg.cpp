@@ -1026,6 +1026,10 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
     assert(false);
 }
 
+size_t XG::edge_rank_as_entity(const Edge& edge) const {
+    return edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
+}
+
 size_t XG::path_rank(const string& name) const {
     // find the name in the csa
     string query = start_marker + name + end_marker;
@@ -1384,6 +1388,58 @@ void to_text(ostream& out, Graph& graph) {
             << edge.to() << "\t"
             << (edge.to_end() ? "-" : "+") << endl;
     }
+}
+
+int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) {
+    // Given that we were at visit_offset on the current side, where will we be
+    // on the new side? 
+    
+    // What will the new visit offset be?
+    int64_t new_visit_offset = 0;
+    
+    // Work out where we're going as a node and orientation
+    int64_t new_node_id = rank_to_id(new_side / 2);
+    bool new_node_is_reverse = new_side % 2;
+    
+    // Work out what edges are going into the place we're going into.
+    vector<Edge> edges;
+    if(new_node_is_reverse) {
+        edges_on_end(new_node_id);
+    } else {
+        edges_on_start(new_node_id);
+    }
+    
+    // Work out what node and orientation we came from
+    int64_t old_node_id = rank_to_id(current_side / 2);
+    bool old_node_is_reverse = current_side % 2;
+    
+    for(auto& edge : edges) {
+        // Look at every edge in order.
+        
+        // TODO: can we match edges with an edge equivalence function and clean this up?
+        if((edge.from() == old_node_id && edge.to() == new_node_id && edge.from_start() == old_node_is_reverse && edge.to_end() == new_node_is_reverse) ||
+            (edge.from() == new_node_id && edge.to() == old_node_id && edge.from_start() == !new_node_is_reverse && edge.to_end() == !old_node_is_reverse)) {
+            // If we found the edge we're taking, break.
+            break;
+        }
+        
+        // Otherwise add in the threads on this edge to the offset.
+        new_visit_offset += h_iv[edge_rank_as_entity(edge)];
+    }
+    
+    // Where does the B_s[] range for the side we're leaving start?
+    int64_t bs_start = bs_iv.select(current_side - 2, BS_SEPARATOR) + 1;
+    
+    // Get the rank in B_s[] for our current side of our visit offset among B_s[] entries pointing to the new node and add that in
+    new_visit_offset += bs_iv.rank(bs_start + visit_offset, new_side) - bs_iv.rank(bs_start, new_side);
+    
+    // Get the number of threads starting at the new side and add that in.
+    new_visit_offset += ts_iv[new_side];
+    
+    // Now we know where it actually ends up: after all the threads that start,
+    // all the threads that come in via earlier edges, and all the previous
+    // threads going there that come via this edge.
+    return new_visit_offset;
 }
 
 }
