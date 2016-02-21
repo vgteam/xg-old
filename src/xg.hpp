@@ -186,12 +186,34 @@ private:
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
-
-    // the gPBWT
-    dyn::rle_str bs_iv;
-    // backs the h(n) and h(e) functions
+    
+    // Succinct thread storage
+    
+    // Threads are haplotype paths in the graph with no edits allowed, starting
+    // and stopping at node boundaries.
+    
+    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
+    using dynamic_int_vector = dyn::rle_str;
+    
+    // TODO: Explain the whole graph PBWT extension here
+    
+    // Basically we keep usage counts for every element in the graph, and and
+    // array of next-node-start sides for each side in the graph. We number
+    // sides as 2 * xg internal node ID, +1 if it's a right side. This leaves us
+    // 0 and 1 free for representing the null destination side and to use as a
+    // per-side array run separator, respectively.
+    
+    // This holds, for each node and edge (with indexes as in the entity vector
+    // f_iv), the usage count (i.e. the number of times it is visited by encoded
+    // threads). This doesn't have to be dynamic since the length will never
+    // change.
     int_vector<> h_iv;
-
+    
+    // This holds the concatenated Benedict arrays (holding the next node's
+    // entry side visited after the current entry side for the threads sorted in
+    // reverse prefix lexicographic order). They are separated with 1s, with 0s
+    // noting the null side (i.e. the thread ends at this node).
+    dynamic_int_vector bs_iv;
 };
 
 class XGPath {
