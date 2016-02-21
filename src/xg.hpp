@@ -132,25 +132,25 @@ public:
      */
     struct ThreadSearchState {
         // What side have we just arrived at in the search?
-        int64_t currentSide = 0;
+        int64_t current_side = 0;
         // What is the first visit at that side that is selected?
-        int64_t rangeStart = 0;
+        int64_t range_start = 0;
         // And what is the past-the-last visit that is selected?
-        int64_t rangeEnd = numeric_limits<int64_t>::max();
+        int64_t range_end = numeric_limits<int64_t>::max();
         
         // How many visits are selected?
         inline int64_t count() {
-            return rangeEnd - rangeStart;
+            return range_end - range_start;
         }
         
         // Return true if the range has nothing selected.
-        inline bool isEmpty() {
-            return rangeEnd <= rangeStart;
+        inline bool is_empty() {
+            return range_end <= range_start;
         }
     };
     
     // Extend a search with the given section of a thread.
-    void extend(ThreadSearchState& state, const Path& t) const;
+    void extend_search(ThreadSearchState& state, const Path& t) const;
 
     
     char start_marker;
@@ -274,7 +274,7 @@ private:
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
     // another side.
-    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side);
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
 };
 
 class XGPath {

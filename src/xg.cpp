@@ -1464,7 +1464,7 @@ void to_text(ostream& out, Graph& graph) {
     }
 }
 
-int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) {
+int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const {
     // Given that we were at visit_offset on the current side, where will we be
     // on the new side? 
     
@@ -1511,13 +1511,18 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         }
     }
     
+    assert(edge_taken_index != -1);
+    
+    // We need to un-const this int vector because DYNAMIC has no consts anywhere.
+    auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+    
     // Where does the B_s[] range for the side we're leaving start?
-    int64_t bs_start = bs_iv.select(current_side - 2, BS_SEPARATOR) + 1;
+    int64_t bs_start = nonconst_bs_iv->select(current_side - 2, BS_SEPARATOR) + 1;
     
     // Get the rank in B_s[] for our current side of our visit offset among
     // B_s[] entries pointing to the new node and add that in. Make sure to +2
     // to account for the nulls and separators.
-    new_visit_offset += bs_iv.rank(bs_start + visit_offset, edge_taken_index + 2) - bs_iv.rank(bs_start, edge_taken_index + 2);
+    new_visit_offset += nonconst_bs_iv->rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv->rank(bs_start, edge_taken_index + 2);
     
     // Get the number of threads starting at the new side and add that in.
     new_visit_offset += ts_iv[new_side];
@@ -1586,6 +1591,8 @@ void XG::insert_thread(const Path& t) {
                         break;
                     }
                 }
+                
+                assert(edge_taken_index != -1);
 
 #ifdef debug
                 cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << endl;
@@ -1659,6 +1666,37 @@ void XG::insert_thread(const Path& t) {
     
     // TODO: name annotation
     
+}
+
+void XG::extend_search(ThreadSearchState& state, const Path& t) const {
+    
+    for(int64_t i = 0; i < t.mapping_size(); i++) {
+        // For each item in the path
+        const Mapping& mapping = t.mapping(i);
+        
+        if(state.is_empty()) {
+            // Don't bother trying to extend empty things.
+            break;
+        }
+        
+        // TODO: make this mapping to side thing a function
+        int64_t next_id = mapping.position().node_id();
+        bool next_is_reverse = mapping.position().is_reverse();
+        int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
+        
+        if(state.current_side == 0) {
+            // If the state is a start state, just select the whole node using the node usage count.
+            state.range_start = 0;
+            state.range_end = h_iv[node_rank_as_entity(next_id) - 1];
+        } else {
+            // Else, look at where the path goes to and apply the where_to function to shrink the range down.
+            state.range_start = where_to(state.current_side, state.range_start, next_side);
+            state.range_end = where_to(state.current_side, state.range_end, next_side);
+        }
+        
+        // Update the side that the state is on
+        state.current_side = next_side;
+    }
 }
 
 size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
