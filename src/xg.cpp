@@ -1476,23 +1476,19 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     bool new_node_is_reverse = new_side % 2;
     
     // Work out what edges are going into the place we're going into.
-    vector<Edge> edges;
-    if(new_node_is_reverse) {
-        edges_on_end(new_node_id);
-    } else {
-        edges_on_start(new_node_id);
-    }
+    vector<Edge> edges = new_node_is_reverse ? edges_on_end(new_node_id) : edges_on_start(new_node_id);
     
     // Work out what node and orientation we came from
     int64_t old_node_id = rank_to_id(current_side / 2);
     bool old_node_is_reverse = current_side % 2;
     
+    // What edge are we following
+    Edge edge_taken = make_edge(old_node_id, old_node_is_reverse, new_node_id, new_node_is_reverse);
+    
     for(auto& edge : edges) {
         // Look at every edge in order.
         
-        // TODO: can we match edges with an edge equivalence function and clean this up?
-        if((edge.from() == old_node_id && edge.to() == new_node_id && edge.from_start() == old_node_is_reverse && edge.to_end() == new_node_is_reverse) ||
-            (edge.from() == new_node_id && edge.to() == old_node_id && edge.from_start() == !new_node_is_reverse && edge.to_end() == !old_node_is_reverse)) {
+        if(edges_equivalent(edge, edge_taken)) {
             // If we found the edge we're taking, break.
             break;
         }
@@ -1501,11 +1497,27 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         new_visit_offset += h_iv[edge_rank_as_entity(edge) - 1];
     }
     
+    // What edge out of all the edges we can take are we taking?
+    int64_t edge_taken_index = -1;
+    
+    // Look at the edges we could have taken
+    vector<Edge> edges_out = old_node_is_reverse ? edges_on_start(old_node_id) : edges_on_end(old_node_id);
+    
+    for(int64_t i = 0; i < edges_out.size(); i++) {
+        if(edges_equivalent(edges_out[i], edge_taken)) {
+            // i is the index of the edge we took, of the edges available to us.
+            edge_taken_index = i;
+            break;
+        }
+    }
+    
     // Where does the B_s[] range for the side we're leaving start?
     int64_t bs_start = bs_iv.select(current_side - 2, BS_SEPARATOR) + 1;
     
-    // Get the rank in B_s[] for our current side of our visit offset among B_s[] entries pointing to the new node and add that in
-    new_visit_offset += bs_iv.rank(bs_start + visit_offset, new_side) - bs_iv.rank(bs_start, new_side);
+    // Get the rank in B_s[] for our current side of our visit offset among
+    // B_s[] entries pointing to the new node and add that in. Make sure to +2
+    // to account for the nulls and separators.
+    new_visit_offset += bs_iv.rank(bs_start + visit_offset, edge_taken_index + 2) - bs_iv.rank(bs_start, edge_taken_index + 2);
     
     // Get the number of threads starting at the new side and add that in.
     new_visit_offset += ts_iv[new_side];
@@ -1550,7 +1562,7 @@ void XG::insert_thread(const Path& t) {
                 cerr << "End the thread." << endl;
 #endif
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, NULL_SIDE);
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, BS_NULL);
             } else {
                 // This is not the last visit. Send us off to the next place, and update the count on the edge.
                 
@@ -1559,8 +1571,24 @@ void XG::insert_thread(const Path& t) {
                 bool next_is_reverse = thread.mapping(i + 1).position().is_reverse();
                 int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
 
+                // What edge do we take to get there?
+                Edge edge_taken = make_edge(node_id, node_is_reverse, next_id, next_is_reverse);
+                
+                // And what is its index in the edges we can take?
+                int64_t edge_taken_index = -1;
+                
+                // Look at the edges we could have taken
+                vector<Edge> edges_out = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
+                for(int64_t i = 0; i < edges_out.size(); i++) {
+                    if(edges_equivalent(edges_out[i], edge_taken)) {
+                        // i is the index of the edge we took, of the edges available to us.
+                        edge_taken_index = i;
+                        break;
+                    }
+                }
+
 #ifdef debug
-                cerr << "Proceed to " << next_side << endl;
+                cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << endl;
 
                 cerr << "Will go in entry " << bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset << " of " << bs_iv.size() << endl;
             
@@ -1571,7 +1599,8 @@ void XG::insert_thread(const Path& t) {
 #endif 
 
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, next_side);
+                // Make sure to +2 to leave room in the number space for the separators and null destinations.
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, edge_taken_index + 2);
                 
                 // Update the usage count for the edge going form here to the next node
                 // Make sure that edge storage direction is correct.
@@ -1660,6 +1689,21 @@ XG::dynamic_int_vector deserialize(istream& in) {
     }
     
     return converted;
+}
+
+bool edges_equivalent(const Edge& e1, const Edge& e2) {
+    return ((e1.from() == e2.from() && e1.to() == e2.to() && e1.from_start() == e2.from_start() && e1.to_end() == e2.to_end()) ||
+        (e1.from() == e2.to() && e1.to() == e2.from() && e1.from_start() == !e2.to_end() && e1.to_end() == !e2.from_start()));
+}
+
+Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end) {
+    Edge e;
+    e.set_from(from);
+    e.set_to(to);
+    e.set_from_start(from_start);
+    e.set_to_end(to_end);
+    
+    return e;
 }
 
 }

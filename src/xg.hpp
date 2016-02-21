@@ -256,18 +256,20 @@ private:
     // ts stands for "thread start"
     int_vector<> ts_iv;
     
-    // This holds the concatenated Benedict arrays (holding the next node's
-    // entry side visited after the current entry side for the threads sorted in
-    // reverse prefix lexicographic order). They are separated with 1s, with 0s
-    // noting the null side (i.e. the thread ends at this node). To find where
-    // the range for a side starts, subtract 2 from the side (to get its 0-based
-    // rank among real sides), select that separator position, and add 1 to get
-    // to the first B_s array entry (if any) for the side.
+    // This holds the concatenated Benedict arrays. They are separated with 1s,
+    // with 0s noting the null side (i.e. the thread ends at this node). To find
+    // where the range for a side starts, subtract 2 from the side (to get its
+    // 0-based rank among real sides), select that separator position, and add 1
+    // to get to the first B_s array entry (if any) for the side. Instead of
+    // holding destination sides, we actually hold the index of the edge that
+    // gets taken to the destination side, out of all edges we could take
+    // leaving the node. We offset all the values up by 2, to make room for the
+    // null sentinel and the separator.
     dynamic_int_vector bs_iv;
     
     // Constants used as sentinels in bs_iv above.
     const static int64_t BS_SEPARATOR = 1;
-    const static int64_t NULL_SIDE = 0;
+    const static int64_t BS_NULL = 0;
     
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
@@ -311,6 +313,12 @@ size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::struc
 
 // Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
 XG::dynamic_int_vector deserialize(istream& in);
+
+// Determine if two edges are equivalent (the same or one is the reverse of the other)
+bool edges_equivalent(const Edge& e1, const Edge& e2);
+
+// Make an edge from its fields (generally for comparison)
+Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
 
 }
 
