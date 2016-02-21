@@ -111,6 +111,10 @@ public:
     // gPBWT interface
     // insert a thread
     void insert_thread(const Path& t);
+    // Read all the threads embedded in the graph.
+    list<Path> extract_threads();
+    // Count matches to a subthread among embedded threads
+    size_t count_matches(const Path& t);
 
     
     char start_marker;
