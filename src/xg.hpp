@@ -112,11 +112,11 @@ public:
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
     // Read all the threads embedded in the graph.
-    list<Path> extract_threads();
+    list<Path> extract_threads() const;
     // Extract a particular thread by name. Name may not be empty.
-    Path extract_thread(const string& name);
+    Path extract_thread(const string& name) const;
     // Count matches to a subthread among embedded threads
-    size_t count_matches(const Path& t);
+    size_t count_matches(const Path& t) const;
     
     /**
      * Represents the search state for the graph PBWT, so that you can continue
@@ -145,7 +145,7 @@ public:
     };
     
     // Extend a search with the given section of a thread.
-    void extend(ThreadSearchState& state, const Path& t);
+    void extend(ThreadSearchState& state, const Path& t) const;
 
     
     char start_marker;
@@ -249,6 +249,11 @@ private:
     // reverse prefix lexicographic order). They are separated with 1s, with 0s
     // noting the null side (i.e. the thread ends at this node).
     dynamic_int_vector bs_iv;
+    
+    // We need the w function, which we call the "where_to" function. It tells
+    // you, from a given visit at a given side, what visit offset if you go to
+    // another side.
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side);
 };
 
 class XGPath {
