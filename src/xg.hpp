@@ -110,6 +110,10 @@ public:
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
     // gPBWT interface
+    
+    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
+    using dynamic_int_vector = dyn::wt_str;
+    
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
     // Read all the threads embedded in the graph.
@@ -228,9 +232,6 @@ private:
     // Threads are haplotype paths in the graph with no edits allowed, starting
     // and stopping at node boundaries.
     
-    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
-    using dynamic_int_vector = dyn::rle_str;
-    
     // TODO: Explain the whole graph PBWT extension here
     
     // Basically we keep usage counts for every element in the graph, and and
@@ -306,10 +307,10 @@ void parse_region(const string& target, string& name, int64_t& start, int64_t& e
 void to_text(ostream& out, Graph& graph);
 
 // Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(dyn::rle_str& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
+size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
 
 // Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
-dyn::rle_str deserialize(istream& in);
+XG::dynamic_int_vector deserialize(istream& in);
 
 }
 

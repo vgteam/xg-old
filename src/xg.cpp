@@ -1632,7 +1632,7 @@ void XG::insert_thread(const Path& t) {
     
 }
 
-size_t serialize(dyn::rle_str& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
+size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
     size_t written = 0;
     
     // Convert the dynamic int vector to an SDSL int vector
@@ -1647,13 +1647,13 @@ size_t serialize(dyn::rle_str& to_serialize, ostream& out, sdsl::structure_tree_
     return written;
 }
 
-dyn::rle_str deserialize(istream& in) {
+XG::dynamic_int_vector deserialize(istream& in) {
 
     int_vector<> to_convert;
 
     to_convert.load(in);
     
-    dyn::rle_str converted;
+    XG::dynamic_int_vector converted;
     
     for(size_t i = 0; i < to_convert.size(); i++) {
         converted.push_back(to_convert[i]);
