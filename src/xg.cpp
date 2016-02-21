@@ -452,6 +452,19 @@ void XG::build(map<int64_t, string>& node_label,
     util::assign(t_bv, bit_vector(entity_count));
     util::assign(t_to_end_bv, bit_vector(entity_count));
     util::assign(t_from_start_bv, bit_vector(entity_count));
+    
+    // Prepare empty vectors for path indexing
+#ifdef VERBOSE_DEBUG
+    cerr << "creating empty succinct thread store" << endl;
+#endif
+    util::assign(h_iv, int_vector<>(entity_count, 0));
+    util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
+    for(int64_t i = 0; i < node_count * 2; i++) {
+        // Add in a separator marking the start of the B_s[] array for each
+        // side. TODO: can we make the compressed representation expose a batch
+        // append API?
+        bs_iv.push_back(BS_SEPARATOR);
+    }    
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
