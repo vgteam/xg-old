@@ -1463,6 +1463,83 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
+void XG::insert_thread(const Path& t) {
+    // We're going to insert this thread
+    
+    auto insert_thread_forward = [&](const Path& thread) {
+    
+        // Where does the current visit fall on its node? On the first node we
+        // arbitrarily decide to be first of all the threads starting there.
+        // TODO: Make sure that we actually end up ordering starts based on path
+        // name or something later.
+        int64_t visit_offset = 0;
+        for(size_t i = 0; i < thread.mapping_size(); i++) {
+            // For each visit to a node...
+        
+            // What side are we visiting?
+            int64_t node_id = thread.mapping(i).position().node_id();
+            bool node_is_reverse = thread.mapping(i).position().is_reverse();
+            int64_t node_side = id_to_rank(node_id) * 2 + node_is_reverse;
+
+            // Where are we going next?
+            
+            if(i == thread.mapping_size() - 1) {
+                // This is the last visit. Send us off to null
+                
+                // Stick a new entry in the B array at the place where it belongs.
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + visit_offset, NULL_SIDE);
+            } else {
+                // This is not the last visit. Send us off to the next place, and update the count on the edge.
+                
+                // Work out where we're actually going next
+                int64_t next_id = thread.mapping(i + 1).position().node_id();
+                bool next_is_reverse = thread.mapping(i + 1).position().is_reverse();
+                int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
+
+                // Stick a new entry in the B array at the place where it belongs.
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + visit_offset, next_side);
+                
+                // Update the usage count for the edge going form here to the next node
+                h_iv[edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse)]++;
+                
+                // Now where do we go to on the next visit?
+                visit_offset = where_to(node_side, visit_offset, next_side);
+                
+            }
+            
+            // Increment the usage count of the node
+            h_iv[node_rank_as_entity(node_id)]++;
+        }
+        
+    };
+    
+    // We need a simple reverse that works only for perfect match paths
+    auto simple_reverse = [&](const Path& thread) {
+        // Clone the thread (TODO: this is going to copy all the thread data anyway)
+        Path reversed = thread;
+        
+        // TODO: give it a reversed name or something
+        
+        for(size_t i = 0; i < thread.mapping_size(); i++) { 
+            // Copy the mappings from back to front, flipping the is_reverse on their positions.
+            Mapping reversing = thread.mapping(thread.mapping_size() - 1 - i);
+            reversing.mutable_position()->set_is_reverse(!reversing.position().is_reverse());
+            *reversed.mutable_mapping(i) = reversing;
+        }
+        
+        return reversed;        
+    };
+    
+    // Insert forward
+    insert_thread_forward(t);
+    
+    // Insert reverse
+    insert_thread_forward(simple_reverse(t));
+    
+    // TODO: name annotation
+    
+}
+
 size_t serialize(dyn::rle_str& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
     size_t written = 0;
     
