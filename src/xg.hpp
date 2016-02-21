@@ -244,6 +244,14 @@ private:
     // change.
     int_vector<> h_iv;
     
+    // This (as an extension to the algorithm described in the paper) holds the
+    // number of threads beginning at each node. This isn't any extra
+    // information relative to what's in the usage count array, but it's cheaper
+    // (probably) to maintain this rather than to scan through all the edges on
+    // a side every time.
+    // ts stands for "thread start"
+    int_vector<> ts_iv;
+    
     // This holds the concatenated Benedict arrays (holding the next node's
     // entry side visited after the current entry side for the threads sorted in
     // reverse prefix lexicographic order). They are separated with 1s, with 0s
