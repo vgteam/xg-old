@@ -109,17 +109,43 @@ public:
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
     // gPBWT interface
-    // Insert a thread. A name will be generated for it.
+    // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
-    // Insert a thread with the given name. Name must be unique.
-    void insert_thread(const Path& t, const string& name);
-    // Read all the threads embedded in the graph. Returns them in a map by
-    // name.
-    map<string, Path> extract_threads();
-    // Extract a particular thread by name.
+    // Read all the threads embedded in the graph.
+    list<Path> extract_threads();
+    // Extract a particular thread by name. Name may not be empty.
     Path extract_thread(const string& name);
     // Count matches to a subthread among embedded threads
     size_t count_matches(const Path& t);
+    
+    /**
+     * Represents the search state for the graph PBWT, so that you can continue
+     * a search with more of a thread, or backtrack.
+     *
+     * By default, represents an un-started search (with no first visited side)
+     * that can be extended to the whole collection of visits to a side.
+     */
+    struct ThreadSearchState {
+        // What side have we just arrived at in the search?
+        int64_t currentSide = 0;
+        // What is the first visit at that side that is selected?
+        int64_t rangeStart = 0;
+        // And what is the past-the-last visit that is selected?
+        int64_t rangeEnd = numeric_limits<int64_t>::max();
+        
+        // How many visits are selected?
+        inline int64_t count() {
+            return rangeEnd - rangeStart;
+        }
+        
+        // Return true if the range has nothing selected.
+        inline bool isEmpty() {
+            return rangeEnd <= rangeStart;
+        }
+    };
+    
+    // Extend a search with the given section of a thread.
+    void extend(ThreadSearchState& state, const Path& t);
 
     
     char start_marker;
