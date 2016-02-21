@@ -109,10 +109,15 @@ public:
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
     // gPBWT interface
-    // insert a thread
+    // Insert a thread. A name will be generated for it.
     void insert_thread(const Path& t);
-    // Read all the threads embedded in the graph.
-    list<Path> extract_threads();
+    // Insert a thread with the given name. Name must be unique.
+    void insert_thread(const Path& t, const string& name);
+    // Read all the threads embedded in the graph. Returns them in a map by
+    // name.
+    map<string, Path> extract_threads();
+    // Extract a particular thread by name.
+    Path extract_thread(const string& name);
     // Count matches to a subthread among embedded threads
     size_t count_matches(const Path& t);
 
