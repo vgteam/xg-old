@@ -369,20 +369,23 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
                 to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
             }
         }
-#ifdef VERBOSE_DEBUG
+
         // Print out all the paths in the graph we are loading
         for (int i = 0; i < graph.path_size(); ++i) {
             const Path& p = graph.path(i);
             const string& name = p.name();
+#ifdef VERBOSE_DEBUG
             cerr << "Path " << name << ": ";
+#endif
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
                 path_nodes[name][m.rank()] = m;
+#ifdef VERBOSE_DEBUG
                 cerr << m.position().node_id() * 2 + m.position().is_reverse() << "; ";
+#endif
             }
             cerr << endl;
         }
-#endif
     };
     stream::for_each(in, lambda);
     path_count = path_nodes.size();
