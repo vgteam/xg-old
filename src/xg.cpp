@@ -468,7 +468,7 @@ void XG::build(map<int64_t, string>& node_label,
 #ifdef VERBOSE_DEBUG
     cerr << "creating empty succinct thread store" << endl;
 #endif
-    util::assign(h_iv, int_vector<>(entity_count, 0));
+    util::assign(h_iv, int_vector<>(entity_count * 2, 0));
     util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
     cerr << "Can hold " << ts_iv.size() << " sides" << endl;
     for(int64_t i = 0; i < node_count * 2; i++) {
@@ -1552,8 +1552,11 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
             break;
         }
         
-        // Otherwise add in the threads on this edge to the offset.
-        int64_t contribution = h_iv[edge_rank_as_entity(edge) - 1];
+        // Otherwise add in the threads on this edge to the offset. We calculate
+        // where the edge is by doubling its rank, and then taking the reverse
+        // orientation if we have to take the edge in reverse to get to this
+        // node, and the forward orientation otherwise.
+        int64_t contribution = h_iv[(edge_rank_as_entity(edge) - 1) * 2 + arrive_by_reverse(edge, new_node_id, new_node_is_reverse)];
         cerr << contribution << " (from prev edge " << edge.from() << "-" << edge.to() << ") + ";
         new_visit_offset += contribution;
     }
@@ -1676,9 +1679,11 @@ void XG::insert_thread(const Path& t) {
                 // Update the usage count for the edge going form here to the next node
                 // Make sure that edge storage direction is correct.
                 if(has_edge(node_id, node_is_reverse, next_id, next_is_reverse)) {
-                    h_iv[edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse) - 1]++;
+                    // We traverse the forward orientation of the edge
+                    h_iv[(edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse) - 1) * 2]++;
                 } else {
-                    h_iv[edge_rank_as_entity(next_id, !next_is_reverse, node_id, !node_is_reverse) - 1]++;
+                    // We traverse the reverse orientation of the edge
+                    h_iv[(edge_rank_as_entity(next_id, !next_is_reverse, node_id, !node_is_reverse) - 1) * 2 + 1]++;
                 }
                 
                 // Now where do we go to on the next visit?
@@ -1698,11 +1703,14 @@ void XG::insert_thread(const Path& t) {
             }
             cerr << endl;
 
-            cerr << "Node " << node_id << " has rank " << node_rank_as_entity(node_id) << " of " << h_iv.size() << endl;
+            cerr << "Node " << node_id << " orientation " << node_is_reverse <<
+                " has rank " <<
+                ((node_rank_as_entity(node_id) - 1) * 2 + node_is_reverse) <<
+                " of " << h_iv.size() << endl;
 #endif
             
-            // Increment the usage count of the node
-            h_iv[node_rank_as_entity(node_id) - 1]++;
+            // Increment the usage count of the node in this orientation
+            h_iv[(node_rank_as_entity(node_id) - 1) * 2 + node_is_reverse]++;
             
             if(i == 0) {
                 // The thread starts here
@@ -1863,9 +1871,12 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
         cerr << "Extend mapping to " << state.current_side << " range " << state.range_start << " to " << state.range_end << " with " << next_side << endl;
         
         if(state.current_side == 0) {
-            // If the state is a start state, just select the whole node using the node usage count.
+            // If the state is a start state, just select the whole node using
+            // the node usage count in this orientation. TODO: orientation not
+            // really important unless we're going to search during a path
+            // addition.
             state.range_start = 0;
-            state.range_end = h_iv[node_rank_as_entity(next_id) - 1];
+            state.range_end = h_iv[(node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse];
         } else {
             // Else, look at where the path goes to and apply the where_to function to shrink the range down.
             state.range_start = where_to(state.current_side, state.range_start, next_side);
@@ -1910,6 +1921,22 @@ XG::dynamic_int_vector deserialize(istream& in) {
 bool edges_equivalent(const Edge& e1, const Edge& e2) {
     return ((e1.from() == e2.from() && e1.to() == e2.to() && e1.from_start() == e2.from_start() && e1.to_end() == e2.to_end()) ||
         (e1.from() == e2.to() && e1.to() == e2.from() && e1.from_start() == !e2.to_end() && e1.to_end() == !e2.from_start()));
+}
+
+bool relative_orientation(const Edge& e1, const Edge& e2) {
+    assert(edges_equivalent(e1, e2));
+    
+    // Just use the reverse-equivalence check from edges_equivalent.
+    return e1.from() == e2.to() && e1.to() == e2.from() && e1.from_start() == !e2.to_end() && e1.to_end() == !e2.from_start();
+}
+
+bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
+    if(e.to() == node_id && (node_is_reverse == e.to_end())) {
+        // We can follow the edge forwards and arrive at the correct side of the node
+        return false;
+    }
+    // Otherwise, since we know the edge goes to the node, we have to take it backward.
+    return true;
 }
 
 Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end) {

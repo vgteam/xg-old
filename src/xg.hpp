@@ -240,12 +240,16 @@ private:
     // 0 and 1 free for representing the null destination side and to use as a
     // per-side array run separator, respectively.
     
-    // This holds, for each node and edge (with indexes as in the entity vector
-    // f_iv), the usage count (i.e. the number of times it is visited by encoded
-    // threads). This doesn't have to be dynamic since the length will never
-    // change.
-    // Remember that entity ranks are 1-based, so if you have an entity rank you
-    // have to subtract 1 to get its position here.
+    // This holds, for each node and edge, in each direction (with indexes as in
+    // the entity vector f_iv, *2, and +1 for reverse), the usage count (i.e.
+    // the number of times it is visited by encoded threads). This doesn't have
+    // to be dynamic since the length will never change. Remember that entity
+    // ranks are 1-based, so if you have an entity rank you have to subtract 1
+    // to get its position here. We have to track separately for both directions
+    // because, even though when everything is inserted the usage counts in both
+    // directions are the same, while we're inserting a thread in one direction
+    // and not (yet) the other, the usage counts in both directions will be
+    // different.
     int_vector<> h_iv;
     
     // This (as an extension to the algorithm described in the paper) holds the
@@ -316,6 +320,16 @@ XG::dynamic_int_vector deserialize(istream& in);
 
 // Determine if two edges are equivalent (the same or one is the reverse of the other)
 bool edges_equivalent(const Edge& e1, const Edge& e2);
+
+// Given two equivalent edges, return false if they run in the same direction,
+// and true if they are articulated in opposite directions.
+bool relative_orientation(const Edge& e1, const Edge& e2);
+
+// Return true if we can only arrive at the start of the given oriented node by
+// traversing the given edge in reverse, and false if we can do it by traversing
+// the edge forwards. (For single-side self loops, this always beans false.) The
+// edge must actually attach to the start of the given oriented node.
+bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
 
 // Make an edge from its fields (generally for comparison)
 Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
