@@ -1772,7 +1772,8 @@ list<Path> XG::extract_threads() const {
     cerr << "Extracting threads" << endl;
 #endif
 
-    for(int64_t i = 0; i < ts_iv.size(); i++) {
+    for(int64_t i = 1; i < ts_iv.size(); i++) {
+        // For each real side
     
 #ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
@@ -1804,7 +1805,7 @@ list<Path> XG::extract_threads() const {
             while(true) {
                 // Unpack the side into a node traversal
                 Mapping m;
-                m.mutable_position()->set_node_id(side / 2);
+                m.mutable_position()->set_node_id(rank_to_id(side / 2));
                 m.mutable_position()->set_is_reverse(side % 2);
                 
                 // Add the mapping to the path
@@ -1823,17 +1824,29 @@ list<Path> XG::extract_threads() const {
                     edge_index -= 2;
                 }
                 
+#ifdef VERBOSE_DEBUG
+                cerr << "Taking edge #" << edge_index << " from " << side << endl;
+#endif
+                
                 // Look at the edges we could have taken next
-                vector<Edge> edges_out = side % 2 ? edges_on_start(side / 2) : edges_on_end(side / 2);
+                vector<Edge> edges_out = side % 2 ? edges_on_start(rank_to_id(side / 2)) : edges_on_end(rank_to_id(side / 2));
                 
                 Edge& taken = edges_out[edge_index];
                 
+#ifdef VERBOSE_DEBUG
+                cerr << edges_out.size() << " edges possible." << endl;
+#endif
+                
                 // Follow the edge
-                int64_t other_node = taken.from() == side / 2 ? taken.to() : taken.from();
+                int64_t other_node = taken.from() == rank_to_id(side / 2) ? taken.to() : taken.from();
                 bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
                 
                 // Get the side 
-                int64_t other_side = other_node * 2 + other_orientation;
+                int64_t other_side = id_to_rank(other_node) * 2 + other_orientation;
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "Go to side " << other_side << endl;
+#endif
                 
                 // Go there with where_to
                 offset = where_to(side, offset, other_side);
