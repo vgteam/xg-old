@@ -1689,9 +1689,20 @@ void XG::insert_thread(const Path& t) {
 
 #ifdef VERBOSE_DEBUG
                 cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << "/" << edges_out.size() << endl;
+#endif
+            
+                // Where do we insert the B value?
+                int64_t target_entry = bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
+                
+                // Where is the first spot not in our range at the moment?
+                int64_t next_range_start = (node_side - 2 == bs_iv.rank(bs_iv.size(), BS_SEPARATOR) - 1 ? bs_iv.size() : bs_iv.select(node_side - 2 + 1, BS_SEPARATOR));
+    
+#ifdef VERBOSE_DEBUG
+                cerr << "Will go in entry " << target_entry << " of " << bs_iv.size() << endl;
+#endif
 
-                cerr << "Will go in entry " << bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset << " of " << bs_iv.size() << endl;
-#endif 
+                // Make sure our new entry won't end up owned by the next side over.
+                assert(target_entry <= next_range_start);
 
                 // Stick a new entry in the B array at the place where it belongs.
                 // Make sure to +2 to leave room in the number space for the separators and null destinations.
