@@ -369,6 +369,8 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
                 to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
             }
         }
+#ifdef VERBOSE_DEBUG
+        // Print out all the paths in the graph we are loading
         for (int i = 0; i < graph.path_size(); ++i) {
             const Path& p = graph.path(i);
             const string& name = p.name();
@@ -380,6 +382,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
             }
             cerr << endl;
         }
+#endif
     };
     stream::for_each(in, lambda);
     path_count = path_nodes.size();
@@ -470,7 +473,6 @@ void XG::build(map<int64_t, string>& node_label,
 #endif
     util::assign(h_iv, int_vector<>(entity_count * 2, 0));
     util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
-    cerr << "Can hold " << ts_iv.size() << " sides" << endl;
     for(int64_t i = 0; i < node_count * 2; i++) {
         // Add in a separator marking the start of the B_s[] array for each
         // side. TODO: can we make the compressed representation expose a batch
@@ -931,12 +933,16 @@ void XG::build(map<int64_t, string>& node_label,
         cerr << "validating threads" << endl;
         
         for(auto path : extract_threads()) {
+#ifdef VERBOSE_DEBUG
             cerr << "Path: ";
             for(size_t i = 0; i < path.mapping_size(); i++) {
                 Mapping mapping = path.mapping(i);
                 cerr << mapping.position().node_id() * 2 + mapping.position().is_reverse() << "; ";
             }
             cerr << endl;
+#endif
+            // TODO: check the paths over: either the path or its reverse should
+            // be in the collection of paths we can reconstruct.
         }
         
         for (auto& pathpair : path_nodes) {
@@ -1557,7 +1563,9 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         // orientation if we have to take the edge in reverse to get to this
         // node, and the forward orientation otherwise.
         int64_t contribution = h_iv[(edge_rank_as_entity(edge) - 1) * 2 + arrive_by_reverse(edge, new_node_id, new_node_is_reverse)];
+#ifdef VERBOSE_DEBUG
         cerr << contribution << " (from prev edge " << edge.from() << "-" << edge.to() << ") + ";
+#endif
         new_visit_offset += contribution;
     }
     
@@ -1589,14 +1597,20 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // B_s[] entries pointing to the new node and add that in. Make sure to +2
     // to account for the nulls and separators.
     int64_t contribution = nonconst_bs_iv->rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv->rank(bs_start, edge_taken_index + 2);
+#ifdef VERBOSE_DEBUG
     cerr << contribution << " (via this edge) + ";
+#endif
     new_visit_offset += contribution;
     
     // Get the number of threads starting at the new side and add that in.
     contribution = ts_iv[new_side];
+#ifdef VERBOSE_DEBUG
     cerr << contribution << " (starting here) = ";
+#endif
     new_visit_offset += contribution;
+#ifdef VERBOSE_DEBUG
     cerr << new_visit_offset << endl;
+#endif
     
     // Now we know where it actually ends up: after all the threads that start,
     // all the threads that come in via earlier edges, and all the previous
@@ -1604,13 +1618,12 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
-#define debug
 void XG::insert_thread(const Path& t) {
     // We're going to insert this thread
     
     auto insert_thread_forward = [&](const Path& thread) {
     
-#ifdef debug
+#ifdef VERBOSE_DEBUG
         cerr << "Inserting thread " << thread.name() << " with " << thread.mapping_size() << " mappings" << endl;
 #endif
         // Where does the current visit fall on its node? On the first node we
@@ -1626,7 +1639,7 @@ void XG::insert_thread(const Path& t) {
             bool node_is_reverse = thread.mapping(i).position().is_reverse();
             int64_t node_side = id_to_rank(node_id) * 2 + node_is_reverse;
             
-#ifdef debug
+#ifdef VERBOSE_DEBUG
             cerr << "Visit side " << node_side << endl;
 #endif
 
@@ -1635,7 +1648,7 @@ void XG::insert_thread(const Path& t) {
             if(i == thread.mapping_size() - 1) {
                 // This is the last visit. Send us off to null
                 
-#ifdef debug
+#ifdef VERBOSE_DEBUG
                 cerr << "End the thread." << endl;
 #endif
                 // Stick a new entry in the B array at the place where it belongs.
@@ -1666,7 +1679,7 @@ void XG::insert_thread(const Path& t) {
                 
                 assert(edge_taken_index != -1);
 
-#ifdef debug
+#ifdef VERBOSE_DEBUG
                 cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << endl;
 
                 cerr << "Will go in entry " << bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset << " of " << bs_iv.size() << endl;
@@ -1689,14 +1702,14 @@ void XG::insert_thread(const Path& t) {
                 // Now where do we go to on the next visit?
                 visit_offset = where_to(node_side, visit_offset, next_side);
                 
-#ifdef debug
+#ifdef VERBOSE_DEBUG
 
                 cerr << "Offset " << visit_offset << " at side " << next_side << endl;
 #endif
                 
             }
             
-#ifdef debug
+#ifdef VERBOSE_DEBUG
             
             for(size_t j = 0; j < bs_iv.size(); j++) {
                 cerr << bs_iv.at(j) << "; ";
@@ -1752,12 +1765,15 @@ list<Path> XG::extract_threads() const {
     // Fill in a lsut of paths found
     list<Path> found;
 
+#ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
-    cerr << "Can hold " << ts_iv.size() << " sides" << endl;
+#endif
 
     for(int64_t i = 0; i < ts_iv.size(); i++) {
     
+#ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
+#endif
     
         // For each side
         if(ts_iv[i] == 0) {
@@ -1767,8 +1783,10 @@ list<Path> XG::extract_threads() const {
         
         for(int64_t j = 0; j < ts_iv[i]; j++) {
             // For every thread starting there
-            
+      
+#ifdef debug    
             cerr << "Extracting thread " << j << endl;
+#endif
             
             // make a new path
             Path path;
@@ -1828,8 +1846,6 @@ list<Path> XG::extract_threads() const {
     return found;
 }
 
-#undef debug
-
 size_t XG::count_matches(const Path& t) const {
     // This is just a really simple wrapper that does a single extend
     ThreadSearchState state;
@@ -1839,6 +1855,7 @@ size_t XG::count_matches(const Path& t) const {
 
 void XG::extend_search(ThreadSearchState& state, const Path& t) const {
     
+#ifdef VERBOSE_DEBUG
     cerr << "Looking for path: ";
     for(int64_t i = 0; i < t.mapping_size(); i++) {
         // For each item in the path
@@ -1849,6 +1866,7 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
         cerr << next_side << "; ";
     }
     cerr << endl;
+#endif
     
     
     for(int64_t i = 0; i < t.mapping_size(); i++) {
@@ -1858,7 +1876,9 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
         if(state.is_empty()) {
             // Don't bother trying to extend empty things.
             
+#ifdef VERBOSE_DEBUG
             cerr << "Nothing selected!" << endl;
+#endif
             
             break;
         }
@@ -1868,7 +1888,9 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
         bool next_is_reverse = mapping.position().is_reverse();
         int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
         
+#ifdef VERBOSE_DEBUG
         cerr << "Extend mapping to " << state.current_side << " range " << state.range_start << " to " << state.range_end << " with " << next_side << endl;
+#endif
         
         if(state.current_side == 0) {
             // If the state is a start state, just select the whole node using
