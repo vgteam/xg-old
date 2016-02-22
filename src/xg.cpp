@@ -436,6 +436,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
 
 }
 
+#define VERBOSE_DEBUG
 void XG::build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
@@ -991,6 +992,7 @@ void XG::build(map<int64_t, string>& node_label,
         cerr << "graph ok" << endl;
     }
 }
+#undef VERBOSE_DEBUG
 
 Node XG::node(int64_t id) const {
     Node n;
@@ -1073,7 +1075,7 @@ vector<Edge> XG::edges_from(int64_t id) const {
 vector<Edge> XG::edges_on_start(int64_t id) const {
     vector<Edge> edges;
     for (auto& edge : edges_of(id)) {
-        if (edge.to() == id || edge.from_start()) {
+        if((edge.to() == id && !edge.to_end()) || (edge.from() == id && edge.from_start())) {
             edges.push_back(edge);
         }
     }
@@ -1083,7 +1085,7 @@ vector<Edge> XG::edges_on_start(int64_t id) const {
 vector<Edge> XG::edges_on_end(int64_t id) const {
     vector<Edge> edges;
     for (auto& edge : edges_of(id)) {
-        if (edge.from() == id || edge.to_end()) {
+        if((edge.to() == id && edge.to_end()) || (edge.from() == id && !edge.from_start())) {
             edges.push_back(edge);
         }
     }
@@ -1528,6 +1530,7 @@ void to_text(ostream& out, Graph& graph) {
     }
 }
 
+#define VERBOSE_DEBUG
 int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const {
     // Given that we were at visit_offset on the current side, where will we be
     // on the new side? 
@@ -1567,7 +1570,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         // node, and the forward orientation otherwise.
         int64_t contribution = h_iv[(edge_rank_as_entity(edge) - 1) * 2 + arrive_by_reverse(edge, new_node_id, new_node_is_reverse)];
 #ifdef VERBOSE_DEBUG
-        cerr << contribution << " (from prev edge " << edge.from() << "-" << edge.to() << ") + ";
+        cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << ") + ";
 #endif
         new_visit_offset += contribution;
     }
@@ -1620,7 +1623,9 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // threads going there that come via this edge.
     return new_visit_offset;
 }
+#undef VERBOSE_DEBUG
 
+#define VERBOSE_DEBUG
 void XG::insert_thread(const Path& t) {
     // We're going to insert this thread
     
@@ -1673,17 +1678,17 @@ void XG::insert_thread(const Path& t) {
                 // Look at the edges we could have taken
                 vector<Edge> edges_out = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
                 for(int64_t i = 0; i < edges_out.size(); i++) {
-                    if(edges_equivalent(edges_out[i], edge_taken)) {
+                    if(edge_taken_index == -1 && edges_equivalent(edges_out[i], edge_taken)) {
                         // i is the index of the edge we took, of the edges available to us.
                         edge_taken_index = i;
-                        break;
                     }
+                    cerr << "Edge #" << i << ": "  << edges_out[i].from() << (edges_out[i].from_start() ? "L" : "R") << "-" << edges_out[i].to() << (edges_out[i].to_end() ? "R" : "L") << endl;
                 }
                 
                 assert(edge_taken_index != -1);
 
 #ifdef VERBOSE_DEBUG
-                cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << endl;
+                cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << "/" << edges_out.size() << endl;
 
                 cerr << "Will go in entry " << bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset << " of " << bs_iv.size() << endl;
 #endif 
@@ -1762,7 +1767,9 @@ void XG::insert_thread(const Path& t) {
     // TODO: name annotation
     
 }
+#undef VERBOSE_DEBUG
 
+#define VERBOSE_DEBUG
 list<Path> XG::extract_threads() const {
 
     // Fill in a lsut of paths found
@@ -1811,10 +1818,26 @@ list<Path> XG::extract_threads() const {
                 // Add the mapping to the path
                 *path.add_mapping() = m;
                 
+#ifdef VERBOSE_DEBUG
+                cerr << "At side " << side << endl;
+                
+                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) << " at " << nonconst_bs_iv->size() << endl;
+#endif
                 // Work out where we go
                 
                 // What edge of the available edges do we take?
                 int64_t edge_index = nonconst_bs_iv->at(nonconst_bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset);
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "Group starts at " << nonconst_bs_iv->select(side - 2, BS_SEPARATOR) << endl;
+                int64_t outbound_count = ((side - 2 == nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv->size() : nonconst_bs_iv->select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv->select(side - 2, BS_SEPARATOR);
+                cerr << "Local B entry " << offset << " of " << outbound_count << endl;
+                assert(offset < outbound_count);
+#endif
+                
+                
+                // If we find a separator, we're very broken.
+                assert(edge_index != BS_SEPARATOR);
                 
                 if(edge_index == BS_NULL) {
                     // Path ends here.
@@ -1827,16 +1850,20 @@ list<Path> XG::extract_threads() const {
 #ifdef VERBOSE_DEBUG
                 cerr << "Taking edge #" << edge_index << " from " << side << endl;
 #endif
+
+                // We also should not have negative edges.
+                assert(edge_index >= 0);
                 
                 // Look at the edges we could have taken next
                 vector<Edge> edges_out = side % 2 ? edges_on_start(rank_to_id(side / 2)) : edges_on_end(rank_to_id(side / 2));
+                
+                assert(edge_index < edges_out.size());
                 
                 Edge& taken = edges_out[edge_index];
                 
 #ifdef VERBOSE_DEBUG
                 cerr << edges_out.size() << " edges possible." << endl;
 #endif
-                
                 // Follow the edge
                 int64_t other_node = taken.from() == rank_to_id(side / 2) ? taken.to() : taken.from();
                 bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
@@ -1861,6 +1888,7 @@ list<Path> XG::extract_threads() const {
     
     return found;
 }
+#undef VERBOSE_DEBUG
 
 size_t XG::count_matches(const Path& t) const {
     // This is just a really simple wrapper that does a single extend
@@ -1971,6 +1999,9 @@ bool relative_orientation(const Edge& e1, const Edge& e2) {
 bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
     if(e.to() == node_id && (node_is_reverse == e.to_end())) {
         // We can follow the edge forwards and arrive at the correct side of the node
+        return false;
+    } else if(e.to() == e.from() && e.from_start() != e.to_end()) {
+        // Reversing self loop
         return false;
     }
     // Otherwise, since we know the edge goes to the node, we have to take it backward.
