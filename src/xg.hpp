@@ -73,6 +73,7 @@ public:
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
+    // Supports the edge articulated in any orientation. Edge must exist.
     size_t edge_rank_as_entity(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
@@ -330,6 +331,11 @@ bool relative_orientation(const Edge& e1, const Edge& e2);
 // the edge forwards. (For single-side self loops, this always beans false.) The
 // edge must actually attach to the start of the given oriented node.
 bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
+
+// Like above, but returns true if we can only ever depart via the edge from the
+// node by going in reverse over the edge. Also always false for reversing self
+// loops.
+bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
 
 // Make an edge from its fields (generally for comparison)
 Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);

@@ -1142,32 +1142,55 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     return false;
 }
 
+#define VERBOSE_DEBUG
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
-    /*
+#ifdef VERBOSE_DEBUG
     cerr << "Finding rank for "
          << id1 << (from_start?"+":"-") << " (" << rank1 << ") " << " -> "
          << id2 << (to_end?"-":"+") << " (" << rank2 << ")"<< endl;
-    */
+#endif
     size_t f_start = f_bv_select(rank1);
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
-    //cerr << f_start << " to " << f_end << endl;
+#ifdef VERBOSE_DEBUG
+    cerr << f_start << " to " << f_end << endl;
+#endif
     for (size_t i = f_start; i < f_end; ++i) {
-        //cerr << f_iv[i] << endl;
+#ifdef VERBOSE_DEBUG
+        cerr << f_iv[i] << endl;
+#endif
         if (rank2 == f_iv[i]
             && f_from_start_cbv[i] == from_start
             && f_to_end_cbv[i] == to_end) {
-            //cerr << i << endl;
+#ifdef VERBOSE_DEBUG
+            cerr << i << endl;
+#endif
             return i+1;
         }
     }
     //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
     assert(false);
 }
+#undef VERBOSE_DEBUG
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
-    return edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
+    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
+        int64_t rank = edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
+#ifdef VERBOSE_DEBUG
+        cerr << "Found rank " << rank << endl;
+#endif
+        assert(!entity_is_node(rank));
+        return rank;
+    } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
+        // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
+        int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+        assert(!entity_is_node(rank));
+        return rank;
+    } else {
+        // Someone gave us an edge that doesn't exist.
+        assert(false);
+    }
 }
 
 size_t XG::path_rank(const string& name) const {
@@ -1564,13 +1587,17 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
             break;
         }
         
-        // Otherwise add in the threads on this edge to the offset. We calculate
-        // where the edge is by doubling its rank, and then taking the reverse
-        // orientation if we have to take the edge in reverse to get to this
-        // node, and the forward orientation otherwise.
-        int64_t contribution = h_iv[(edge_rank_as_entity(edge) - 1) * 2 + arrive_by_reverse(edge, new_node_id, new_node_is_reverse)];
+        // Otherwise add in the threads on this edge to the offset
+
+        // Get the orientation number for this edge (which is *not* the edge we
+        // are following and so doesn't involve old_node_anything). We only
+        // treat it as reverse if the reverse direction is the only direction we
+        // can take to get here.
+        int64_t edge_orientation_number = ((edge_rank_as_entity(edge) - 1) * 2) + arrive_by_reverse(edge, new_node_id, new_node_is_reverse);
+        
+        int64_t contribution = h_iv[edge_orientation_number];
 #ifdef VERBOSE_DEBUG
-        cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << ") + ";
+        cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << " at " << edge_orientation_number << ") + ";
 #endif
         new_visit_offset += contribution;
     }
@@ -1669,8 +1696,9 @@ void XG::insert_thread(const Path& t) {
                 bool next_is_reverse = thread.mapping(i + 1).position().is_reverse();
                 int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
 
-                // What edge do we take to get there?
-                Edge edge_taken = make_edge(node_id, node_is_reverse, next_id, next_is_reverse);
+                // What edge do we take to get there? We're going to search for
+                // the actual edge articulated in the official orientation.
+                Edge edge_wanted = make_edge(node_id, node_is_reverse, next_id, next_is_reverse);
                 
                 // And what is its index in the edges we can take?
                 int64_t edge_taken_index = -1;
@@ -1678,11 +1706,21 @@ void XG::insert_thread(const Path& t) {
                 // Look at the edges we could have taken
                 vector<Edge> edges_out = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
                 for(int64_t i = 0; i < edges_out.size(); i++) {
-                    if(edge_taken_index == -1 && edges_equivalent(edges_out[i], edge_taken)) {
+                    if(edge_taken_index == -1 && edges_equivalent(edges_out[i], edge_wanted)) {
                         // i is the index of the edge we took, of the edges available to us.
                         edge_taken_index = i;
                     }
+#ifdef VERBOSE_DEBUG
                     cerr << "Edge #" << i << ": "  << edges_out[i].from() << (edges_out[i].from_start() ? "L" : "R") << "-" << edges_out[i].to() << (edges_out[i].to_end() ? "R" : "L") << endl;
+                    
+                    // Work out what its number is for the orientation it goes
+                    // out in. We know we have this edge, so we just see if we
+                    // have to depart in reveres and if so take the edge in
+                    // reverse.
+                    int64_t edge_orientation_number = (edge_rank_as_entity(edges_out[i]) - 1) * 2 + depart_by_reverse(edges_out[i], node_id, node_is_reverse);
+                    
+                    cerr << "\tOrientation rank: " << edge_orientation_number << endl;
+#endif
                 }
                 
                 assert(edge_taken_index != -1);
@@ -1690,6 +1728,9 @@ void XG::insert_thread(const Path& t) {
 #ifdef VERBOSE_DEBUG
                 cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << "/" << edges_out.size() << endl;
 #endif
+            
+                // Make a nice reference to the edge we're taking in its real orientation.
+                auto& edge_taken = edges_out[edge_taken_index];
             
                 // Where do we insert the B value?
                 int64_t target_entry = bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
@@ -1710,13 +1751,23 @@ void XG::insert_thread(const Path& t) {
                 
                 // Update the usage count for the edge going form here to the next node
                 // Make sure that edge storage direction is correct.
-                if(has_edge(node_id, node_is_reverse, next_id, next_is_reverse)) {
-                    // We traverse the forward orientation of the edge
-                    h_iv[(edge_rank_as_entity(node_id, node_is_reverse, next_id, next_is_reverse) - 1) * 2]++;
-                } else {
-                    // We traverse the reverse orientation of the edge
-                    h_iv[(edge_rank_as_entity(next_id, !next_is_reverse, node_id, !node_is_reverse) - 1) * 2 + 1]++;
+                // Which orientation of an edge are we crossing?
+                int64_t edge_orientation_number = (edge_rank_as_entity(edge_taken) - 1) * 2 + depart_by_reverse(edge_taken, node_id, node_is_reverse);
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "We need to add 1 to the traversals of oriented edge " << edge_orientation_number << endl;
+#endif
+                
+                // Increment the count for the edge
+                h_iv[edge_orientation_number]++;
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "h = [";
+                for(int64_t k = 0; k < h_iv.size(); k++) {
+                    cerr << h_iv[k] << ", ";
                 }
+                cerr << "]" << endl;
+#endif
                 
                 // Now where do we go to on the next visit?
                 visit_offset = where_to(node_side, visit_offset, next_side);
@@ -2009,6 +2060,18 @@ bool relative_orientation(const Edge& e1, const Edge& e2) {
 
 bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
     if(e.to() == node_id && (node_is_reverse == e.to_end())) {
+        // We can follow the edge forwards and arrive at the correct side of the node
+        return false;
+    } else if(e.to() == e.from() && e.from_start() != e.to_end()) {
+        // Reversing self loop
+        return false;
+    }
+    // Otherwise, since we know the edge goes to the node, we have to take it backward.
+    return true;
+}
+
+bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
+    if(e.from() == node_id && (node_is_reverse == e.from_start())) {
         // We can follow the edge forwards and arrive at the correct side of the node
         return false;
     } else if(e.to() == e.from() && e.from_start() != e.to_end()) {
