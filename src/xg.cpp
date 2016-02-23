@@ -935,6 +935,11 @@ void XG::build(map<int64_t, string>& node_label,
         
         cerr << "validating threads" << endl;
         
+        // How many thread orientations are in the index?
+        size_t threads_found = 0;
+        // And how many shoukd we have inserted?
+        size_t threads_expected = 0;
+        
         for(auto path : extract_threads()) {
 #ifdef VERBOSE_DEBUG
             cerr << "Path: ";
@@ -944,8 +949,10 @@ void XG::build(map<int64_t, string>& node_label,
             }
             cerr << endl;
 #endif
-            // TODO: check the paths over: either the path or its reverse should
-            // be in the collection of paths we can reconstruct.
+            // Make sure we can search all the threads we find present in the index
+            assert(count_matches(path) > 0);
+            
+            threads_found++;
         }
         
         for (auto& pathpair : path_nodes) {
@@ -984,9 +991,14 @@ void XG::build(map<int64_t, string>& node_label,
             if(all_perfect) {
                 // This path should have been inserted. Look for it.
                 assert(count_matches(reconstructed) > 0);
+                
+                threads_expected += 2;
             }
             
         }
+        
+        // Make sure we have the right number of threads.
+        assert(threads_found == threads_expected);
 
         cerr << "graph ok" << endl;
     }
