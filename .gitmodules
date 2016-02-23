@@ -3,4 +3,4 @@
 	url = https://github.com/illusori/bash-tap.git
 [submodule "stream"]
 	path = stream
-	url = https://github.com/edawson/stream.git
+	url = https://github.com/vgteam/stream.git
