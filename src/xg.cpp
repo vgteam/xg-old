@@ -107,6 +107,10 @@ void XG::load(istream& in) {
     ep_bv.load(in);
     ep_bv_rank.load(in, &ep_bv);
     ep_bv_select.load(in, &ep_bv);
+    
+    h_iv.load(in);
+    ts_iv.load(in);
+    bs_iv = deserialize(in);
 }
 
 void XGPath::load(istream& in) {
@@ -324,6 +328,10 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += ep_bv_rank.serialize(out, child, "entity_path_mapping_starts_rank");
     written += ep_bv_select.serialize(out, child, "entity_path_mapping_starts_select");
 
+    written += h_iv.serialize(out, child, "thread_usage_count");
+    written += ts_iv.serialize(out, child, "thread_start_count");
+    written += xg::serialize(bs_iv, out, child, "benedict_arrays");
+
     sdsl::structure_tree::add_size(child, written);
     return written;
     
@@ -361,13 +369,22 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
                 to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
             }
         }
+
+        // Print out all the paths in the graph we are loading
         for (int i = 0; i < graph.path_size(); ++i) {
             const Path& p = graph.path(i);
             const string& name = p.name();
+#ifdef VERBOSE_DEBUG
+            cerr << "Path " << name << ": ";
+#endif
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
                 path_nodes[name][m.rank()] = m;
+#ifdef VERBOSE_DEBUG
+                cerr << m.position().node_id() * 2 + m.position().is_reverse() << "; ";
+#endif
             }
+            cerr << endl;
         }
     };
     stream::for_each(in, lambda);
@@ -452,6 +469,19 @@ void XG::build(map<int64_t, string>& node_label,
     util::assign(t_bv, bit_vector(entity_count));
     util::assign(t_to_end_bv, bit_vector(entity_count));
     util::assign(t_from_start_bv, bit_vector(entity_count));
+    
+    // Prepare empty vectors for path indexing
+#ifdef VERBOSE_DEBUG
+    cerr << "creating empty succinct thread store" << endl;
+#endif
+    util::assign(h_iv, int_vector<>(entity_count * 2, 0));
+    util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
+    for(int64_t i = 0; i < node_count * 2; i++) {
+        // Add in a separator marking the start of the B_s[] array for each
+        // side. TODO: can we make the compressed representation expose a batch
+        // append API?
+        bs_iv.push_back(BS_SEPARATOR);
+    }    
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
@@ -646,6 +676,53 @@ void XG::build(map<int64_t, string>& node_label,
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
 
+#ifdef VERBOSE_DEBUG
+    cerr << "storing threads" << endl;
+#endif
+    
+    // Just store all the paths that are all perfect mappings as threads.
+    // We end up converting *back* into Path objects.
+    for (auto& pathpair : path_nodes) {
+        Path reconstructed;
+        
+        // Grab the name
+        reconstructed.set_name(pathpair.first);
+        
+        bool all_perfect = true;
+        
+        // Grab the Mappings, which are now sorted by rank
+        for (auto& m : pathpair.second) {
+            *reconstructed.add_mapping() = m.second;
+            
+            // Make sure the mapping is perfect
+            // TODO: handle offsets
+            if(m.second.edit_size() > 1) {
+                // Not a perfect mapping
+                all_perfect = false;
+                break;
+            } else if(m.second.edit_size() == 0) {
+                // Is a perfect mapping
+                continue;
+            } else {
+                // We have exactly one edit. Is it perfect?
+                auto edit = m.second.edit(0);
+                
+                if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
+                    // The edit calls for actual editing
+                    all_perfect = false;
+                    break;
+                }
+            }
+        }
+        
+        if(all_perfect) {
+            // We actually want to insert this path as a thread
+            insert_thread(reconstructed);
+        }
+        
+    }
+    
+
 #ifdef DEBUG_CONSTRUCTION
     cerr << "|s_iv| = " << size_in_mega_bytes(s_iv) << endl;
     cerr << "|f_iv| = " << size_in_mega_bytes(f_iv) << endl;
@@ -661,6 +738,9 @@ void XG::build(map<int64_t, string>& node_label,
     //cerr << "|i_wt| = " << size_in_mega_bytes(i_wt) << endl;
 
     cerr << "|s_cbv| = " << size_in_mega_bytes(s_cbv) << endl;
+    
+    cerr << "|h_iv| = " << size_in_mega_bytes(h_iv) << endl;
+    cerr << "|ts_iv| = " << size_in_mega_bytes(ts_iv) << endl;
 
     long double paths_mb_size = 0;
     cerr << "|pn_iv| = " << size_in_mega_bytes(pn_iv) << endl;
@@ -692,6 +772,9 @@ void XG::build(map<int64_t, string>& node_label,
         + size_in_mega_bytes(i_iv)
         //+ size_in_mega_bytes(i_wt)
         + size_in_mega_bytes(s_cbv)
+        + size_in_mega_bytes(h_iv)
+        + size_in_mega_bytes(ts_iv)
+        // TODO: add in size of the dynamic bs_iv
         + paths_mb_size
         ) << endl;
 
@@ -849,6 +932,73 @@ void XG::build(map<int64_t, string>& node_label,
             //cerr << path_name << " rank = " << prank << endl;
             // check membership now for each entity in the path
         }
+        
+        cerr << "validating threads" << endl;
+        
+        // How many thread orientations are in the index?
+        size_t threads_found = 0;
+        // And how many shoukd we have inserted?
+        size_t threads_expected = 0;
+        
+        for(auto path : extract_threads()) {
+#ifdef VERBOSE_DEBUG
+            cerr << "Path: ";
+            for(size_t i = 0; i < path.mapping_size(); i++) {
+                Mapping mapping = path.mapping(i);
+                cerr << mapping.position().node_id() * 2 + mapping.position().is_reverse() << "; ";
+            }
+            cerr << endl;
+#endif
+            // Make sure we can search all the threads we find present in the index
+            assert(count_matches(path) > 0);
+            
+            threads_found++;
+        }
+        
+        for (auto& pathpair : path_nodes) {
+            Path reconstructed;
+            
+            // Grab the name
+            reconstructed.set_name(pathpair.first);
+            
+            bool all_perfect = true;
+            
+            // Grab the Mappings, which are now sorted by rank
+            for (auto& m : pathpair.second) {
+                *reconstructed.add_mapping() = m.second;
+                
+                // Make sure the mapping is perfect
+                // TODO: handle offsets
+                if(m.second.edit_size() > 1) {
+                    // Not a perfect mapping
+                    all_perfect = false;
+                    break;
+                } else if(m.second.edit_size() == 0) {
+                    // Is a perfect mapping
+                    continue;
+                } else {
+                    // We have exactly one edit. Is it perfect?
+                    auto edit = m.second.edit(0);
+                    
+                    if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
+                        // The edit calls for actual editing
+                        all_perfect = false;
+                        break;
+                    }
+                }
+            }
+            
+            if(all_perfect) {
+                // This path should have been inserted. Look for it.
+                assert(count_matches(reconstructed) > 0);
+                
+                threads_expected += 2;
+            }
+            
+        }
+        
+        // Make sure we have the right number of threads.
+        assert(threads_found == threads_expected);
 
         cerr << "graph ok" << endl;
     }
@@ -935,7 +1085,7 @@ vector<Edge> XG::edges_from(int64_t id) const {
 vector<Edge> XG::edges_on_start(int64_t id) const {
     vector<Edge> edges;
     for (auto& edge : edges_of(id)) {
-        if (edge.to() == id || edge.from_start()) {
+        if((edge.to() == id && !edge.to_end()) || (edge.from() == id && edge.from_start())) {
             edges.push_back(edge);
         }
     }
@@ -945,7 +1095,7 @@ vector<Edge> XG::edges_on_start(int64_t id) const {
 vector<Edge> XG::edges_on_end(int64_t id) const {
     vector<Edge> edges;
     for (auto& edge : edges_of(id)) {
-        if (edge.from() == id || edge.to_end()) {
+        if((edge.to() == id && edge.to_end()) || (edge.from() == id && !edge.from_start())) {
             edges.push_back(edge);
         }
     }
@@ -1005,25 +1155,53 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
-    /*
+#ifdef VERBOSE_DEBUG
     cerr << "Finding rank for "
          << id1 << (from_start?"+":"-") << " (" << rank1 << ") " << " -> "
          << id2 << (to_end?"-":"+") << " (" << rank2 << ")"<< endl;
-    */
-    size_t f_start = f_bv_select(rank1);
+#endif
+    size_t f_start = f_bv_select(rank1) + 1;
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
-    //cerr << f_start << " to " << f_end << endl;
+#ifdef VERBOSE_DEBUG
+    cerr << f_start << " to " << f_end << endl;
+#endif
     for (size_t i = f_start; i < f_end; ++i) {
-        //cerr << f_iv[i] << endl;
+#ifdef VERBOSE_DEBUG
+        cerr << f_iv[i] << endl;
+#endif
         if (rank2 == f_iv[i]
             && f_from_start_cbv[i] == from_start
             && f_to_end_cbv[i] == to_end) {
-            //cerr << i << endl;
+#ifdef VERBOSE_DEBUG
+            cerr << i << endl;
+#endif
             return i+1;
         }
     }
     //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
     assert(false);
+}
+
+size_t XG::edge_rank_as_entity(const Edge& edge) const {
+    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
+        int64_t rank = edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
+#ifdef VERBOSE_DEBUG
+        cerr << "Found rank " << rank << endl;
+#endif
+        assert(!entity_is_node(rank));
+        return rank;
+    } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
+        // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
+        int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+#ifdef VERBOSE_DEBUG
+        cerr << "Found rank " << rank << endl;
+#endif
+        assert(!entity_is_node(rank));
+        return rank;
+    } else {
+        // Someone gave us an edge that doesn't exist.
+        assert(false);
+    }
 }
 
 size_t XG::path_rank(const string& name) const {
@@ -1384,6 +1562,539 @@ void to_text(ostream& out, Graph& graph) {
             << edge.to() << "\t"
             << (edge.to_end() ? "-" : "+") << endl;
     }
+}
+
+int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const {
+    // Given that we were at visit_offset on the current side, where will we be
+    // on the new side? 
+    
+    // What will the new visit offset be?
+    int64_t new_visit_offset = 0;
+    
+    // Work out where we're going as a node and orientation
+    int64_t new_node_id = rank_to_id(new_side / 2);
+    bool new_node_is_reverse = new_side % 2;
+    
+    // Work out what edges are going into the place we're going into.
+    vector<Edge> edges = new_node_is_reverse ? edges_on_end(new_node_id) : edges_on_start(new_node_id);
+    
+    // Work out what node and orientation we came from
+    int64_t old_node_id = rank_to_id(current_side / 2);
+    bool old_node_is_reverse = current_side % 2;
+    
+    // What edge are we following
+    Edge edge_taken = make_edge(old_node_id, old_node_is_reverse, new_node_id, new_node_is_reverse);
+    
+    // Make sure we find it
+    bool edge_found = false;
+    
+    for(auto& edge : edges) {
+        // Look at every edge in order.
+        
+        if(edges_equivalent(edge, edge_taken)) {
+            // If we found the edge we're taking, break.
+            edge_found = true;
+            break;
+        }
+        
+        // Otherwise add in the threads on this edge to the offset
+
+        // Get the orientation number for this edge (which is *not* the edge we
+        // are following and so doesn't involve old_node_anything). We only
+        // treat it as reverse if the reverse direction is the only direction we
+        // can take to get here.
+        int64_t edge_orientation_number = ((edge_rank_as_entity(edge) - 1) * 2) + arrive_by_reverse(edge, new_node_id, new_node_is_reverse);
+        
+        int64_t contribution = h_iv[edge_orientation_number];
+#ifdef VERBOSE_DEBUG
+        cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << " at " << edge_orientation_number << ") + ";
+#endif
+        new_visit_offset += contribution;
+    }
+    
+    assert(edge_found);
+    
+    // What edge out of all the edges we can take are we taking?
+    int64_t edge_taken_index = -1;
+    
+    // Look at the edges we could have taken next
+    vector<Edge> edges_out = old_node_is_reverse ? edges_on_start(old_node_id) : edges_on_end(old_node_id);
+    
+    for(int64_t i = 0; i < edges_out.size(); i++) {
+        if(edges_equivalent(edges_out[i], edge_taken)) {
+            // i is the index of the edge we took, of the edges available to us.
+            edge_taken_index = i;
+            break;
+        }
+    }
+    
+    assert(edge_taken_index != -1);
+    
+    // We need to un-const this int vector because DYNAMIC has no consts anywhere.
+    auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+    
+    // Where does the B_s[] range for the side we're leaving start?
+    int64_t bs_start = nonconst_bs_iv->select(current_side - 2, BS_SEPARATOR) + 1;
+    
+    // Get the rank in B_s[] for our current side of our visit offset among
+    // B_s[] entries pointing to the new node and add that in. Make sure to +2
+    // to account for the nulls and separators.
+    int64_t contribution = nonconst_bs_iv->rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv->rank(bs_start, edge_taken_index + 2);
+#ifdef VERBOSE_DEBUG
+    cerr << contribution << " (via this edge) + ";
+#endif
+    new_visit_offset += contribution;
+    
+    // Get the number of threads starting at the new side and add that in.
+    contribution = ts_iv[new_side];
+#ifdef VERBOSE_DEBUG
+    cerr << contribution << " (starting here) = ";
+#endif
+    new_visit_offset += contribution;
+#ifdef VERBOSE_DEBUG
+    cerr << new_visit_offset << endl;
+#endif
+    
+    // Now we know where it actually ends up: after all the threads that start,
+    // all the threads that come in via earlier edges, and all the previous
+    // threads going there that come via this edge.
+    return new_visit_offset;
+}
+
+void XG::insert_thread(const Path& t) {
+    // We're going to insert this thread
+    
+    auto insert_thread_forward = [&](const Path& thread) {
+    
+#ifdef VERBOSE_DEBUG
+        cerr << "Inserting thread " << thread.name() << " with " << thread.mapping_size() << " mappings" << endl;
+#endif
+        // Where does the current visit fall on its node? On the first node we
+        // arbitrarily decide to be first of all the threads starting there.
+        // TODO: Make sure that we actually end up ordering starts based on path
+        // name or something later.
+        int64_t visit_offset = 0;
+        for(size_t i = 0; i < thread.mapping_size(); i++) {
+            // For each visit to a node...
+        
+            // What side are we visiting?
+            int64_t node_id = thread.mapping(i).position().node_id();
+            bool node_is_reverse = thread.mapping(i).position().is_reverse();
+            int64_t node_side = id_to_rank(node_id) * 2 + node_is_reverse;
+            
+#ifdef VERBOSE_DEBUG
+            cerr << "Visit side " << node_side << endl;
+#endif
+
+            // Where are we going next?
+            
+            if(i == thread.mapping_size() - 1) {
+                // This is the last visit. Send us off to null
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "End the thread." << endl;
+#endif
+                // Stick a new entry in the B array at the place where it belongs.
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, BS_NULL);
+            } else {
+                // This is not the last visit. Send us off to the next place, and update the count on the edge.
+                
+                // Work out where we're actually going next
+                int64_t next_id = thread.mapping(i + 1).position().node_id();
+                bool next_is_reverse = thread.mapping(i + 1).position().is_reverse();
+                int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
+
+                // What edge do we take to get there? We're going to search for
+                // the actual edge articulated in the official orientation.
+                Edge edge_wanted = make_edge(node_id, node_is_reverse, next_id, next_is_reverse);
+                
+                // And what is its index in the edges we can take?
+                int64_t edge_taken_index = -1;
+                
+                // Look at the edges we could have taken
+                vector<Edge> edges_out = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
+                for(int64_t i = 0; i < edges_out.size(); i++) {
+                    if(edge_taken_index == -1 && edges_equivalent(edges_out[i], edge_wanted)) {
+                        // i is the index of the edge we took, of the edges available to us.
+                        edge_taken_index = i;
+                    }
+#ifdef VERBOSE_DEBUG
+                    cerr << "Edge #" << i << ": "  << edges_out[i].from() << (edges_out[i].from_start() ? "L" : "R") << "-" << edges_out[i].to() << (edges_out[i].to_end() ? "R" : "L") << endl;
+                    
+                    // Work out what its number is for the orientation it goes
+                    // out in. We know we have this edge, so we just see if we
+                    // have to depart in reveres and if so take the edge in
+                    // reverse.
+                    int64_t edge_orientation_number = (edge_rank_as_entity(edges_out[i]) - 1) * 2 + depart_by_reverse(edges_out[i], node_id, node_is_reverse);
+                    
+                    cerr << "\tOrientation rank: " << edge_orientation_number << endl;
+#endif
+                }
+                
+                assert(edge_taken_index != -1);
+
+#ifdef VERBOSE_DEBUG
+                cerr << "Proceed to " << next_side << " via edge #" << edge_taken_index << "/" << edges_out.size() << endl;
+#endif
+            
+                // Make a nice reference to the edge we're taking in its real orientation.
+                auto& edge_taken = edges_out[edge_taken_index];
+            
+                // Where do we insert the B value?
+                int64_t target_entry = bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
+                
+                // Where is the first spot not in our range at the moment?
+                int64_t next_range_start = (node_side - 2 == bs_iv.rank(bs_iv.size(), BS_SEPARATOR) - 1 ? bs_iv.size() : bs_iv.select(node_side - 2 + 1, BS_SEPARATOR));
+    
+#ifdef VERBOSE_DEBUG
+                cerr << "Will go in entry " << target_entry << " of " << bs_iv.size() << endl;
+#endif
+
+                // Make sure our new entry won't end up owned by the next side over.
+                assert(target_entry <= next_range_start);
+
+                // Stick a new entry in the B array at the place where it belongs.
+                // Make sure to +2 to leave room in the number space for the separators and null destinations.
+                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, edge_taken_index + 2);
+                
+                // Update the usage count for the edge going form here to the next node
+                // Make sure that edge storage direction is correct.
+                // Which orientation of an edge are we crossing?
+                int64_t edge_orientation_number = (edge_rank_as_entity(edge_taken) - 1) * 2 + depart_by_reverse(edge_taken, node_id, node_is_reverse);
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "We need to add 1 to the traversals of oriented edge " << edge_orientation_number << endl;
+#endif
+                
+                // Increment the count for the edge
+                h_iv[edge_orientation_number]++;
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "h = [";
+                for(int64_t k = 0; k < h_iv.size(); k++) {
+                    cerr << h_iv[k] << ", ";
+                }
+                cerr << "]" << endl;
+#endif
+                
+                // Now where do we go to on the next visit?
+                visit_offset = where_to(node_side, visit_offset, next_side);
+                
+#ifdef VERBOSE_DEBUG
+
+                cerr << "Offset " << visit_offset << " at side " << next_side << endl;
+#endif
+                
+            }
+            
+#ifdef VERBOSE_DEBUG
+            
+            for(size_t j = 0; j < bs_iv.size(); j++) {
+                cerr << bs_iv.at(j) << "; ";
+            }
+            cerr << endl;
+
+            cerr << "Node " << node_id << " orientation " << node_is_reverse <<
+                " has rank " <<
+                ((node_rank_as_entity(node_id) - 1) * 2 + node_is_reverse) <<
+                " of " << h_iv.size() << endl;
+#endif
+            
+            // Increment the usage count of the node in this orientation
+            h_iv[(node_rank_as_entity(node_id) - 1) * 2 + node_is_reverse]++;
+            
+            if(i == 0) {
+                // The thread starts here
+                ts_iv[node_side]++;
+            }
+        }
+        
+    };
+    
+    // We need a simple reverse that works only for perfect match paths
+    auto simple_reverse = [&](const Path& thread) {
+        // Clone the thread (TODO: this is going to copy all the thread data anyway)
+        Path reversed = thread;
+        
+        // TODO: give it a reversed name or something
+        
+        for(size_t i = 0; i < thread.mapping_size(); i++) { 
+            // Copy the mappings from back to front, flipping the is_reverse on their positions.
+            Mapping reversing = thread.mapping(thread.mapping_size() - 1 - i);
+            reversing.mutable_position()->set_is_reverse(!reversing.position().is_reverse());
+            *reversed.mutable_mapping(i) = reversing;
+        }
+        
+        return reversed;        
+    };
+    
+    // Insert forward
+    insert_thread_forward(t);
+    
+    // Insert reverse
+    insert_thread_forward(simple_reverse(t));
+    
+    // TODO: name annotation
+    
+}
+
+list<Path> XG::extract_threads() const {
+
+    // Fill in a lsut of paths found
+    list<Path> found;
+
+#ifdef VERBOSE_DEBUG
+    cerr << "Extracting threads" << endl;
+#endif
+
+    for(int64_t i = 1; i < ts_iv.size(); i++) {
+        // For each real side
+    
+#ifdef VERBOSE_DEBUG
+        cerr << ts_iv[i] << " threads start at side " << i << endl;
+#endif
+    
+        // For each side
+        if(ts_iv[i] == 0) {
+            // Skip it if no threads start at it
+            continue;
+        }
+        
+        for(int64_t j = 0; j < ts_iv[i]; j++) {
+            // For every thread starting there
+      
+#ifdef debug    
+            cerr << "Extracting thread " << j << endl;
+#endif
+            
+            // make a new path
+            Path path;
+            
+            // Start the side at i and the offset at j
+            int64_t side = i;
+            int64_t offset = j;
+            
+            // We need to un-const this int vector because DYNAMIC has no consts anywhere.
+            auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+            
+            while(true) {
+                // Unpack the side into a node traversal
+                Mapping m;
+                m.mutable_position()->set_node_id(rank_to_id(side / 2));
+                m.mutable_position()->set_is_reverse(side % 2);
+                
+                // Add the mapping to the path
+                *path.add_mapping() = m;
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "At side " << side << endl;
+                
+                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) << " at " << nonconst_bs_iv->size() << endl;
+#endif
+                // Work out where we go
+                
+                // What edge of the available edges do we take?
+                int64_t edge_index = nonconst_bs_iv->at(nonconst_bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset);
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "Group starts at " << nonconst_bs_iv->select(side - 2, BS_SEPARATOR) << endl;
+                int64_t outbound_count = ((side - 2 == nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv->size() : nonconst_bs_iv->select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv->select(side - 2, BS_SEPARATOR);
+                cerr << "Local B entry " << offset << " of " << outbound_count << endl;
+                assert(offset < outbound_count);
+#endif
+                
+                
+                // If we find a separator, we're very broken.
+                assert(edge_index != BS_SEPARATOR);
+                
+                if(edge_index == BS_NULL) {
+                    // Path ends here.
+                    break;
+                } else {
+                    // Convert to an actual edge index
+                    edge_index -= 2;
+                }
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "Taking edge #" << edge_index << " from " << side << endl;
+#endif
+
+                // We also should not have negative edges.
+                assert(edge_index >= 0);
+                
+                // Look at the edges we could have taken next
+                vector<Edge> edges_out = side % 2 ? edges_on_start(rank_to_id(side / 2)) : edges_on_end(rank_to_id(side / 2));
+                
+                assert(edge_index < edges_out.size());
+                
+                Edge& taken = edges_out[edge_index];
+                
+#ifdef VERBOSE_DEBUG
+                cerr << edges_out.size() << " edges possible." << endl;
+#endif
+                // Follow the edge
+                int64_t other_node = taken.from() == rank_to_id(side / 2) ? taken.to() : taken.from();
+                bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+                
+                // Get the side 
+                int64_t other_side = id_to_rank(other_node) * 2 + other_orientation;
+                
+#ifdef VERBOSE_DEBUG
+                cerr << "Go to side " << other_side << endl;
+#endif
+                
+                // Go there with where_to
+                offset = where_to(side, offset, other_side);
+                side = other_side;
+    
+            }
+            
+            found.push_back(path);
+            
+        }
+    }
+    
+    return found;
+}
+
+size_t XG::count_matches(const Path& t) const {
+    // This is just a really simple wrapper that does a single extend
+    ThreadSearchState state;
+    extend_search(state, t);
+    return state.count();
+}
+
+void XG::extend_search(ThreadSearchState& state, const Path& t) const {
+    
+#ifdef VERBOSE_DEBUG
+    cerr << "Looking for path: ";
+    for(int64_t i = 0; i < t.mapping_size(); i++) {
+        // For each item in the path
+        const Mapping& mapping = t.mapping(i);
+        int64_t next_id = mapping.position().node_id();
+        bool next_is_reverse = mapping.position().is_reverse();
+        int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
+        cerr << next_side << "; ";
+    }
+    cerr << endl;
+#endif
+    
+    
+    for(int64_t i = 0; i < t.mapping_size(); i++) {
+        // For each item in the path
+        const Mapping& mapping = t.mapping(i);
+        
+        if(state.is_empty()) {
+            // Don't bother trying to extend empty things.
+            
+#ifdef VERBOSE_DEBUG
+            cerr << "Nothing selected!" << endl;
+#endif
+            
+            break;
+        }
+        
+        // TODO: make this mapping to side thing a function
+        int64_t next_id = mapping.position().node_id();
+        bool next_is_reverse = mapping.position().is_reverse();
+        int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
+        
+#ifdef VERBOSE_DEBUG
+        cerr << "Extend mapping to " << state.current_side << " range " << state.range_start << " to " << state.range_end << " with " << next_side << endl;
+#endif
+        
+        if(state.current_side == 0) {
+            // If the state is a start state, just select the whole node using
+            // the node usage count in this orientation. TODO: orientation not
+            // really important unless we're going to search during a path
+            // addition.
+            state.range_start = 0;
+            state.range_end = h_iv[(node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse];
+        } else {
+            // Else, look at where the path goes to and apply the where_to function to shrink the range down.
+            state.range_start = where_to(state.current_side, state.range_start, next_side);
+            state.range_end = where_to(state.current_side, state.range_end, next_side);
+        }
+        
+        // Update the side that the state is on
+        state.current_side = next_side;
+    }
+}
+
+size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
+    size_t written = 0;
+    
+    // Convert the dynamic int vector to an SDSL int vector
+    int_vector<> converted(to_serialize.size());
+    
+    for(size_t i = 0; i < to_serialize.size(); i++) {
+        converted[i] = to_serialize.at(i);
+    }
+    
+    written += converted.serialize(out, child, name);
+    
+    return written;
+}
+
+XG::dynamic_int_vector deserialize(istream& in) {
+
+    int_vector<> to_convert;
+
+    to_convert.load(in);
+    
+    XG::dynamic_int_vector converted;
+    
+    for(size_t i = 0; i < to_convert.size(); i++) {
+        converted.push_back(to_convert[i]);
+    }
+    
+    return converted;
+}
+
+bool edges_equivalent(const Edge& e1, const Edge& e2) {
+    return ((e1.from() == e2.from() && e1.to() == e2.to() && e1.from_start() == e2.from_start() && e1.to_end() == e2.to_end()) ||
+        (e1.from() == e2.to() && e1.to() == e2.from() && e1.from_start() == !e2.to_end() && e1.to_end() == !e2.from_start()));
+}
+
+bool relative_orientation(const Edge& e1, const Edge& e2) {
+    assert(edges_equivalent(e1, e2));
+    
+    // Just use the reverse-equivalence check from edges_equivalent.
+    return e1.from() == e2.to() && e1.to() == e2.from() && e1.from_start() == !e2.to_end() && e1.to_end() == !e2.from_start();
+}
+
+bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
+    if(e.to() == node_id && (node_is_reverse == e.to_end())) {
+        // We can follow the edge forwards and arrive at the correct side of the node
+        return false;
+    } else if(e.to() == e.from() && e.from_start() != e.to_end()) {
+        // Reversing self loop
+        return false;
+    }
+    // Otherwise, since we know the edge goes to the node, we have to take it backward.
+    return true;
+}
+
+bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse) {
+    if(e.from() == node_id && (node_is_reverse == e.from_start())) {
+        // We can follow the edge forwards and arrive at the correct side of the node
+        return false;
+    } else if(e.to() == e.from() && e.from_start() != e.to_end()) {
+        // Reversing self loop
+        return false;
+    }
+    // Otherwise, since we know the edge goes to the node, we have to take it backward.
+    return true;
+}
+
+Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end) {
+    Edge e;
+    e.set_from(from);
+    e.set_to(to);
+    e.set_from_start(from_start);
+    e.set_to_end(to_end);
+    
+    return e;
 }
 
 }

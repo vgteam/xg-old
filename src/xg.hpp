@@ -73,6 +73,8 @@ public:
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
+    // Supports the edge articulated in any orientation. Edge must exist.
+    size_t edge_rank_as_entity(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
@@ -109,8 +111,48 @@ public:
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
 
     // gPBWT interface
-    // insert a thread
+    
+    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
+    using dynamic_int_vector = dyn::wt_str;
+    
+    // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
+    // Read all the threads embedded in the graph.
+    list<Path> extract_threads() const;
+    // Extract a particular thread by name. Name may not be empty.
+    // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
+    Path extract_thread(const string& name) const;
+    // Count matches to a subthread among embedded threads
+    size_t count_matches(const Path& t) const;
+    
+    /**
+     * Represents the search state for the graph PBWT, so that you can continue
+     * a search with more of a thread, or backtrack.
+     *
+     * By default, represents an un-started search (with no first visited side)
+     * that can be extended to the whole collection of visits to a side.
+     */
+    struct ThreadSearchState {
+        // What side have we just arrived at in the search?
+        int64_t current_side = 0;
+        // What is the first visit at that side that is selected?
+        int64_t range_start = 0;
+        // And what is the past-the-last visit that is selected?
+        int64_t range_end = numeric_limits<int64_t>::max();
+        
+        // How many visits are selected?
+        inline int64_t count() {
+            return range_end - range_start;
+        }
+        
+        // Return true if the range has nothing selected.
+        inline bool is_empty() {
+            return range_end <= range_start;
+        }
+    };
+    
+    // Extend a search with the given section of a thread.
+    void extend_search(ThreadSearchState& state, const Path& t) const;
 
     
     char start_marker;
@@ -186,12 +228,59 @@ private:
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
-
-    // the gPBWT
-    dyn::rle_str bs_iv;
-    // backs the h(n) and h(e) functions
+    
+    // Succinct thread storage
+    
+    // Threads are haplotype paths in the graph with no edits allowed, starting
+    // and stopping at node boundaries.
+    
+    // TODO: Explain the whole graph PBWT extension here
+    
+    // Basically we keep usage counts for every element in the graph, and and
+    // array of next-node-start sides for each side in the graph. We number
+    // sides as 2 * xg internal node ID, +1 if it's a right side. This leaves us
+    // 0 and 1 free for representing the null destination side and to use as a
+    // per-side array run separator, respectively.
+    
+    // This holds, for each node and edge, in each direction (with indexes as in
+    // the entity vector f_iv, *2, and +1 for reverse), the usage count (i.e.
+    // the number of times it is visited by encoded threads). This doesn't have
+    // to be dynamic since the length will never change. Remember that entity
+    // ranks are 1-based, so if you have an entity rank you have to subtract 1
+    // to get its position here. We have to track separately for both directions
+    // because, even though when everything is inserted the usage counts in both
+    // directions are the same, while we're inserting a thread in one direction
+    // and not (yet) the other, the usage counts in both directions will be
+    // different.
     int_vector<> h_iv;
-
+    
+    // This (as an extension to the algorithm described in the paper) holds the
+    // number of threads beginning at each node. This isn't any extra
+    // information relative to what's in the usage count array, but it's cheaper
+    // (probably) to maintain this rather than to scan through all the edges on
+    // a side every time.
+    // ts stands for "thread start"
+    int_vector<> ts_iv;
+    
+    // This holds the concatenated Benedict arrays. They are separated with 1s,
+    // with 0s noting the null side (i.e. the thread ends at this node). To find
+    // where the range for a side starts, subtract 2 from the side (to get its
+    // 0-based rank among real sides), select that separator position, and add 1
+    // to get to the first B_s array entry (if any) for the side. Instead of
+    // holding destination sides, we actually hold the index of the edge that
+    // gets taken to the destination side, out of all edges we could take
+    // leaving the node. We offset all the values up by 2, to make room for the
+    // null sentinel and the separator.
+    dynamic_int_vector bs_iv;
+    
+    // Constants used as sentinels in bs_iv above.
+    const static int64_t BS_SEPARATOR = 1;
+    const static int64_t BS_NULL = 0;
+    
+    // We need the w function, which we call the "where_to" function. It tells
+    // you, from a given visit at a given side, what visit offset if you go to
+    // another side.
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
 };
 
 class XGPath {
@@ -224,6 +313,33 @@ public:
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse);
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 void to_text(ostream& out, Graph& graph);
+
+// Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
+size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
+
+// Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
+XG::dynamic_int_vector deserialize(istream& in);
+
+// Determine if two edges are equivalent (the same or one is the reverse of the other)
+bool edges_equivalent(const Edge& e1, const Edge& e2);
+
+// Given two equivalent edges, return false if they run in the same direction,
+// and true if they are articulated in opposite directions.
+bool relative_orientation(const Edge& e1, const Edge& e2);
+
+// Return true if we can only arrive at the start of the given oriented node by
+// traversing the given edge in reverse, and false if we can do it by traversing
+// the edge forwards. (For single-side self loops, this always beans false.) The
+// edge must actually attach to the start of the given oriented node.
+bool arrive_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
+
+// Like above, but returns true if we can only ever depart via the edge from the
+// node by going in reverse over the edge. Also always false for reversing self
+// loops.
+bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
+
+// Make an edge from its fields (generally for comparison)
+Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
 
 }
 
