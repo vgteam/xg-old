@@ -1151,7 +1151,7 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
          << id1 << (from_start?"+":"-") << " (" << rank1 << ") " << " -> "
          << id2 << (to_end?"-":"+") << " (" << rank2 << ")"<< endl;
 #endif
-    size_t f_start = f_bv_select(rank1);
+    size_t f_start = f_bv_select(rank1) + 1;
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
 #ifdef VERBOSE_DEBUG
     cerr << f_start << " to " << f_end << endl;
