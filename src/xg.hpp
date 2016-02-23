@@ -120,6 +120,7 @@ public:
     // Read all the threads embedded in the graph.
     list<Path> extract_threads() const;
     // Extract a particular thread by name. Name may not be empty.
+    // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
     Path extract_thread(const string& name) const;
     // Count matches to a subthread among embedded threads
     size_t count_matches(const Path& t) const;
