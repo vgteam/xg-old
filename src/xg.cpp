@@ -436,7 +436,6 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
 
 }
 
-#define VERBOSE_DEBUG
 void XG::build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
@@ -992,7 +991,6 @@ void XG::build(map<int64_t, string>& node_label,
         cerr << "graph ok" << endl;
     }
 }
-#undef VERBOSE_DEBUG
 
 Node XG::node(int64_t id) const {
     Node n;
@@ -1142,7 +1140,6 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     return false;
 }
 
-#define VERBOSE_DEBUG
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
@@ -1172,7 +1169,6 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
     //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
     assert(false);
 }
-#undef VERBOSE_DEBUG
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
     if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
@@ -1185,6 +1181,9 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
     } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
         // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
         int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+#ifdef VERBOSE_DEBUG
+        cerr << "Found rank " << rank << endl;
+#endif
         assert(!entity_is_node(rank));
         return rank;
     } else {
@@ -1553,7 +1552,6 @@ void to_text(ostream& out, Graph& graph) {
     }
 }
 
-#define VERBOSE_DEBUG
 int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const {
     // Given that we were at visit_offset on the current side, where will we be
     // on the new side? 
@@ -1650,9 +1648,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // threads going there that come via this edge.
     return new_visit_offset;
 }
-#undef VERBOSE_DEBUG
 
-#define VERBOSE_DEBUG
 void XG::insert_thread(const Path& t) {
     // We're going to insert this thread
     
@@ -1829,9 +1825,7 @@ void XG::insert_thread(const Path& t) {
     // TODO: name annotation
     
 }
-#undef VERBOSE_DEBUG
 
-#define VERBOSE_DEBUG
 list<Path> XG::extract_threads() const {
 
     // Fill in a lsut of paths found
@@ -1950,7 +1944,6 @@ list<Path> XG::extract_threads() const {
     
     return found;
 }
-#undef VERBOSE_DEBUG
 
 size_t XG::count_matches(const Path& t) const {
     // This is just a really simple wrapper that does a single extend
