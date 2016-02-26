@@ -5,12 +5,12 @@ export C_INCLUDE_PATH=`pwd`/include:$C_INCLUDE_PATH
 export CPLUS_INCLUDE_PATH=`pwd`/include:$CPLUS_INCLUDE_PATH
 export INCLUDE_PATH=`pwd`/include:$INCLUDE_PATH
 export PATH=`pwd`/bin:$PATH
-if [[ "x$CC" == "x" ]]
+if [[ -z "$CC" ]]
 then
     export CC=$(which gcc)
 fi
     
-if [[ "x$CXX" == "x" ]]
+if [[ -z "$CXX" ]]
 then
     export CXX=$(which g++)
 fi
