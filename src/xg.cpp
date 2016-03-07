@@ -1023,6 +1023,18 @@ string XG::node_sequence(int64_t id) const {
     return s;
 }
 
+char XG::pos_char(int64_t id, bool is_rev, size_t off) {
+    size_t rank = id_to_rank(id);
+    size_t pos = s_cbv_select(id_to_rank(id)+1) + off;
+    assert(pos < s_iv.size());
+    char c = revdna3bit(s_iv[pos]);
+    if (!is_rev) {
+        return c;
+    } else {
+        return reverse_complement(c);
+    }
+}
+
 size_t XG::id_to_rank(int64_t id) const {
     return r_iv[id-min_id];
 }
@@ -2095,6 +2107,55 @@ Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end) {
     e.set_to_end(to_end);
     
     return e;
+}
+
+char reverse_complement(const char& c) {
+    switch (c) {
+        case 'A': return 'T'; break;
+        case 'T': return 'A'; break;
+        case 'G': return 'C'; break;
+        case 'C': return 'G'; break;
+        case 'N': return 'N'; break;
+        // Handle the GCSA2 start/stop characters.
+        case '#': return '$'; break;
+        case '$': return '#'; break;
+        default: return 'N';
+    }
+}
+
+string reverse_complement(const string& seq) {
+    string rc;
+    rc.assign(seq.rbegin(), seq.rend());
+    for (auto& c : rc) {
+        switch (c) {
+        case 'A': c = 'T'; break;
+        case 'T': c = 'A'; break;
+        case 'G': c = 'C'; break;
+        case 'C': c = 'G'; break;
+        case 'N': c = 'N'; break;
+        // Handle the GCSA2 start/stop characters.
+        case '#': c = '$'; break;
+        case '$': c = '#'; break;
+        default: break;
+        }
+    }
+    return rc;
+}
+
+void extract_pos(const string& pos_str, int64_t& id, bool& is_rev, size_t& off) {
+    // format is id:off for forward, and id:-off for reverse
+    // find the colon
+    auto s = pos_str.find(":");
+    assert(s != string::npos);
+    id = stol(pos_str.substr(0, s));
+    auto r = pos_str.find("-", s);
+    if (r == string::npos) {
+        is_rev = false;
+        off = stoi(pos_str.substr(s+1, pos_str.size()));
+    } else {
+        is_rev = true;
+        off = stoi(pos_str.substr(r+1, pos_str.size()));
+    }
 }
 
 }

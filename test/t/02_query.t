@@ -5,7 +5,7 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=../bin:$PATH # for xg
 
-plan tests 16
+plan tests 18
 
 xg -v data/z.vg -o z.idx 2>/dev/null
 is $(xg -i z.idx -s 10331 | cut -f 2 -d\ ) "CAGCAGTGGAGCAGAAACAGAGGAGATGACACCATGGGGTAAGCACAGTC" "graph can be queried to obtain node labels"
@@ -18,6 +18,9 @@ rm -f z.idx
 xg -v data/l.vg -o l.idx 2>/dev/null
 xg -i l.idx -p z:0-100 >/dev/null
 is $? 0 "path queries can exceed reference length without error"
+
+is $(xg -P 4:5 -i l.idx) "C" "characters on the forward strand may be queried"
+is $(xg -P 4:-5 -i l.idx) "G" "characters on the reverse strand may be queried"
 
 is $(xg -i l.idx -p z:0-10 | md5sum | cut -f 1 -d\ ) "ee265e344d67e72b43589934e5257a9b" "paths can be queried from the small graph"
 is $(xg -i l.idx -p z:0-100 -c 2 | md5sum | cut -f 1 -d\ ) "76ee1e231d3985d63dbf0abe083b4805" "the entire graph can be extracted with a long query and context"

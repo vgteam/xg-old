@@ -23,6 +23,7 @@ void help_main(char** argv) {
          << "    -n, --node ID        graph neighborhood around node with ID" << endl
          << "    -c, --context N      steps of context to extract when building neighborhood" << endl
          << "    -s, --node-seq ID    provide node sequence for ID" << endl
+         << "    -P, --pos-char POS   give the character at a given position in the graph" << endl
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
          << "    -O, --edges-of ID    list all edges related to node with ID" << endl
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
     bool edges_on_start = false;
     bool edges_on_end = false;
     bool node_sequence = false;
+    string pos_for_char;
     int context_steps = 0;
     bool node_context = false;
     string target;
@@ -68,6 +70,7 @@ int main(int argc, char** argv) {
                 {"out", required_argument, 0, 'o'},
                 {"in", required_argument, 0, 'i'},
                 {"node", required_argument, 0, 'n'},
+                {"pos-char", required_argument, 0, 'P'},
                 //{"range", required_argument, 0, 'r'},
                 {"context", required_argument, 0, 'c'},
                 {"edges-from", required_argument, 0, 'f'},
@@ -84,7 +87,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:V",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:VP:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -160,6 +163,10 @@ int main(int argc, char** argv) {
         case 'p':
             target = optarg;
             break;
+
+        case 'P':
+            pos_for_char = optarg;
+            break;
             
         case 'h':
         case '?':
@@ -211,6 +218,15 @@ int main(int argc, char** argv) {
     // queries
     if (node_sequence) {
         cout << node_id << ": " << graph->node_sequence(node_id) << endl;
+    }
+    if (!pos_for_char.empty()) {
+        // extract the position from the string
+        int64_t id;
+        bool is_rev;
+        size_t off;
+        extract_pos(pos_for_char, id, is_rev, off);
+        // then pick it up from the graph
+        cout << graph->pos_char(id, is_rev, off) << endl;
     }
     if (edges_from) {
         vector<Edge> edges = graph->edges_from(node_id);

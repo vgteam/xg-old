@@ -66,6 +66,7 @@ public:
     size_t max_node_rank(void) const;
     Node node(int64_t id) const; // gets node sequence
     string node_sequence(int64_t id) const;
+    char pos_char(int64_t id, bool is_rev, size_t off); // character at position
     vector<Edge> edges_of(int64_t id) const;
     vector<Edge> edges_to(int64_t id) const;
     vector<Edge> edges_from(int64_t id) const;
@@ -168,7 +169,7 @@ private:
     bit_vector s_bv; // node positions in siv
     rank_support_v<1> s_bv_rank;
     bit_vector::select_1_type s_bv_select;
-    // compressed version, unused...
+    // compressed version
     rrr_vector<> s_cbv;
     rrr_vector<>::rank_1_type s_cbv_rank;
     rrr_vector<>::select_1_type s_cbv_select;
@@ -340,6 +341,13 @@ bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
 
 // Make an edge from its fields (generally for comparison)
 Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
+
+// Helpers for when we're picking up parts of the graph without returning full Node objects
+char reverse_complement(const char& c);
+string reverse_complement(const string& seq);
+
+// Position parsing helper for CLI
+void extract_pos(const string& pos_str, int64_t& id, bool& is_rev, size_t& off);
 
 }
 
