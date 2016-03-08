@@ -384,7 +384,9 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
                 cerr << m.position().node_id() * 2 + m.position().is_reverse() << "; ";
 #endif
             }
+#ifdef VERBOSE_DEBUG
             cerr << endl;
+#endif
         }
     };
     stream::for_each(in, lambda);
@@ -1023,15 +1025,65 @@ string XG::node_sequence(int64_t id) const {
     return s;
 }
 
-char XG::pos_char(int64_t id, bool is_rev, size_t off) {
+size_t XG::node_length(int64_t id) const {
     size_t rank = id_to_rank(id);
-    size_t pos = s_cbv_select(id_to_rank(id)+1) + off;
-    assert(pos < s_iv.size());
-    char c = revdna3bit(s_iv[pos]);
+    size_t start = s_cbv_select(rank);
+    size_t end = rank == node_count ? s_cbv.size() : s_cbv_select(rank+1);
+    return end-start;
+}
+
+char XG::pos_char(int64_t id, bool is_rev, size_t off) const {
+    assert(off < node_length(id));
     if (!is_rev) {
+        size_t rank = id_to_rank(id);
+        size_t pos = s_cbv_select(rank) + off;
+        assert(pos < s_iv.size());
+        char c = revdna3bit(s_iv[pos]);
         return c;
     } else {
+        size_t rank = id_to_rank(id);
+        size_t pos = s_cbv_select(rank+1) - (off+1);
+        assert(pos < s_iv.size());
+        char c = revdna3bit(s_iv[pos]);
         return reverse_complement(c);
+    }
+}
+
+string XG::pos_substr(int64_t id, bool is_rev, size_t off, size_t len) const {
+    if (!is_rev) {
+        size_t rank = id_to_rank(id);
+        size_t start = s_cbv_select(rank) + off;
+        assert(start < s_iv.size());
+        // get until the end position, or the end of the node, which ever is first
+        size_t end;
+        if (!len) {
+            end = s_cbv_select(rank+1);
+        } else {
+            end = min(start + len, s_cbv_select(rank+1));
+        }
+        assert(end < s_iv.size());
+        string s; s.resize(end-start);
+        for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
+            s[i-start] = revdna3bit(s_iv[i]);
+        }
+        return s;
+    } else {
+        size_t rank = id_to_rank(id);
+        size_t end = s_cbv_select(rank+1) - off;
+        assert(end < s_iv.size());
+        // get until the end position, or the end of the node, which ever is first
+        size_t start;
+        if (len > end || !len) {
+            start = s_cbv_select(rank);
+        } else {
+            start = max(end - len, s_cbv_select(rank));
+        }
+        assert(end < s_iv.size());
+        string s; s.resize(end-start);
+        for (size_t i = start; i < s_cbv.size() && i < end; ++i) {
+            s[i-start] = revdna3bit(s_iv[i]);
+        }
+        return reverse_complement(s);
     }
 }
 
@@ -2155,6 +2207,28 @@ void extract_pos(const string& pos_str, int64_t& id, bool& is_rev, size_t& off) 
     } else {
         is_rev = true;
         off = stoi(pos_str.substr(r+1, pos_str.size()));
+    }
+}
+
+void extract_pos_substr(const string& pos_str, int64_t& id, bool& is_rev, size_t& off, size_t& len) {
+    // format is id:off:len on forward and id:-off:len on reverse
+    auto s = pos_str.find(":");
+    assert(s != string::npos);
+    id = stol(pos_str.substr(0, s));
+    auto r = pos_str.find("-", s);
+    if (r == string::npos) {
+        is_rev = false;
+        // find second colon
+        auto t = pos_str.find(":", s+1);
+        assert(t != string::npos);
+        off = stoi(pos_str.substr(s+1, t-s));
+        len = stoi(pos_str.substr(t+1, pos_str.size()));
+    } else {
+        is_rev = true;
+        auto t = pos_str.find(":", r+1);
+        assert(t != string::npos);
+        off = stoi(pos_str.substr(r+1, t-r+1));
+        len = stoi(pos_str.substr(t+1, pos_str.size()));
     }
 }
 

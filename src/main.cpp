@@ -23,7 +23,8 @@ void help_main(char** argv) {
          << "    -n, --node ID        graph neighborhood around node with ID" << endl
          << "    -c, --context N      steps of context to extract when building neighborhood" << endl
          << "    -s, --node-seq ID    provide node sequence for ID" << endl
-         << "    -P, --pos-char POS   give the character at a given position in the graph" << endl
+         << "    -P, --char POS       give the character at a given position in the graph" << endl
+         << "    -F, --substr POS:LEN extract the substr of LEN on the node at the position" << endl
          << "    -f, --edges-from ID  list edges from node with ID" << endl
          << "    -t, --edges-to ID    list edges to node with ID" << endl
          << "    -O, --edges-of ID    list all edges related to node with ID" << endl
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
     bool edges_on_end = false;
     bool node_sequence = false;
     string pos_for_char;
+    string pos_for_substr;
     int context_steps = 0;
     bool node_context = false;
     string target;
@@ -70,7 +72,8 @@ int main(int argc, char** argv) {
                 {"out", required_argument, 0, 'o'},
                 {"in", required_argument, 0, 'i'},
                 {"node", required_argument, 0, 'n'},
-                {"pos-char", required_argument, 0, 'P'},
+                {"char", required_argument, 0, 'P'},
+                {"substr", required_argument, 0, 'F'},
                 //{"range", required_argument, 0, 'r'},
                 {"context", required_argument, 0, 'c'},
                 {"edges-from", required_argument, 0, 'f'},
@@ -87,7 +90,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:VP:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:VP:F:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -168,6 +171,10 @@ int main(int argc, char** argv) {
             pos_for_char = optarg;
             break;
             
+        case 'F':
+            pos_for_substr = optarg;
+            break;
+            
         case 'h':
         case '?':
             help_main(argv);
@@ -228,6 +235,15 @@ int main(int argc, char** argv) {
         // then pick it up from the graph
         cout << graph->pos_char(id, is_rev, off) << endl;
     }
+    if (!pos_for_substr.empty()) {
+        int64_t id;
+        bool is_rev;
+        size_t off;
+        size_t len;
+        extract_pos_substr(pos_for_substr, id, is_rev, off, len);
+        cout << graph->pos_substr(id, is_rev, off, len) << endl;
+    }
+    
     if (edges_from) {
         vector<Edge> edges = graph->edges_from(node_id);
         for (auto& edge : edges) {

@@ -66,7 +66,9 @@ public:
     size_t max_node_rank(void) const;
     Node node(int64_t id) const; // gets node sequence
     string node_sequence(int64_t id) const;
-    char pos_char(int64_t id, bool is_rev, size_t off); // character at position
+    size_t node_length(int64_t id) const;
+    char pos_char(int64_t id, bool is_rev, size_t off) const; // character at position
+    string pos_substr(int64_t id, bool is_rev, size_t off, size_t len = 0) const; // substring in range
     vector<Edge> edges_of(int64_t id) const;
     vector<Edge> edges_to(int64_t id) const;
     vector<Edge> edges_from(int64_t id) const;
@@ -346,8 +348,9 @@ Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
 char reverse_complement(const char& c);
 string reverse_complement(const string& seq);
 
-// Position parsing helper for CLI
+// Position parsing helpers for CLI
 void extract_pos(const string& pos_str, int64_t& id, bool& is_rev, size_t& off);
+void extract_pos_substr(const string& pos_str, int64_t& id, bool& is_rev, size_t& off, size_t& len);
 
 }
 
