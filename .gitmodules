@@ -4,6 +4,3 @@
 [submodule "stream"]
 	path = stream
 	url = https://github.com/vgteam/stream.git
-[submodule "DYNAMIC"]
-	path = DYNAMIC
-	url = https://github.com/vgteam/DYNAMIC.git
