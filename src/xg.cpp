@@ -53,6 +53,10 @@ XG::XG(Graph& graph)
     from_graph(graph);
 }
 
+XG::~XG(void) {
+     if (bs_iv != nullptr) delete bs_iv;
+}
+
 void XG::load(istream& in) {
 
     if (!in.good()) {
@@ -478,12 +482,13 @@ void XG::build(map<int64_t, string>& node_label,
 #endif
     util::assign(h_iv, int_vector<>(entity_count * 2, 0));
     util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
+    bs_iv = new dynamic_int_vector;
     for(int64_t i = 0; i < node_count * 2; i++) {
         // Add in a separator marking the start of the B_s[] array for each
         // side. TODO: can we make the compressed representation expose a batch
         // append API?
-        bs_iv.push_back(BS_SEPARATOR);
-    }    
+        bs_iv->push_back(BS_SEPARATOR);
+    }
 
     // for each node in the sequence
     // concatenate the labels into the s_iv
@@ -1695,15 +1700,16 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     assert(edge_taken_index != -1);
     
     // We need to un-const this int vector because DYNAMIC has no consts anywhere.
-    auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+    //auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+    dynamic_int_vector& nonconst_bs_iv = *bs_iv;
     
     // Where does the B_s[] range for the side we're leaving start?
-    int64_t bs_start = nonconst_bs_iv->select(current_side - 2, BS_SEPARATOR) + 1;
+    int64_t bs_start = nonconst_bs_iv.select(current_side - 2, BS_SEPARATOR) + 1;
     
     // Get the rank in B_s[] for our current side of our visit offset among
     // B_s[] entries pointing to the new node and add that in. Make sure to +2
     // to account for the nulls and separators.
-    int64_t contribution = nonconst_bs_iv->rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv->rank(bs_start, edge_taken_index + 2);
+    int64_t contribution = nonconst_bs_iv.rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv.rank(bs_start, edge_taken_index + 2);
 #ifdef VERBOSE_DEBUG
     cerr << contribution << " (via this edge) + ";
 #endif
@@ -1759,7 +1765,7 @@ void XG::insert_thread(const Path& t) {
                 cerr << "End the thread." << endl;
 #endif
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, BS_NULL);
+                bs_iv->insert(bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, BS_NULL);
             } else {
                 // This is not the last visit. Send us off to the next place, and update the count on the edge.
                 
@@ -1805,13 +1811,13 @@ void XG::insert_thread(const Path& t) {
                 auto& edge_taken = edges_out[edge_taken_index];
             
                 // Where do we insert the B value?
-                int64_t target_entry = bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
+                int64_t target_entry = bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
                 
                 // Where is the first spot not in our range at the moment?
-                int64_t next_range_start = (node_side - 2 == bs_iv.rank(bs_iv.size(), BS_SEPARATOR) - 1 ? bs_iv.size() : bs_iv.select(node_side - 2 + 1, BS_SEPARATOR));
+                int64_t next_range_start = (node_side - 2 == bs_iv->rank(bs_iv->size(), BS_SEPARATOR) - 1 ? bs_iv->size() : bs_iv->select(node_side - 2 + 1, BS_SEPARATOR));
     
 #ifdef VERBOSE_DEBUG
-                cerr << "Will go in entry " << target_entry << " of " << bs_iv.size() << endl;
+                cerr << "Will go in entry " << target_entry << " of " << bs_iv->size() << endl;
 #endif
 
                 // Make sure our new entry won't end up owned by the next side over.
@@ -1819,7 +1825,7 @@ void XG::insert_thread(const Path& t) {
 
                 // Stick a new entry in the B array at the place where it belongs.
                 // Make sure to +2 to leave room in the number space for the separators and null destinations.
-                bs_iv.insert(bs_iv.select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, edge_taken_index + 2);
+                bs_iv->insert(bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, edge_taken_index + 2);
                 
                 // Update the usage count for the edge going form here to the next node
                 // Make sure that edge storage direction is correct.
@@ -1853,8 +1859,8 @@ void XG::insert_thread(const Path& t) {
             
 #ifdef VERBOSE_DEBUG
             
-            for(size_t j = 0; j < bs_iv.size(); j++) {
-                cerr << bs_iv.at(j) << "; ";
+            for(size_t j = 0; j < bs_iv->size(); j++) {
+                cerr << bs_iv->at(j) << "; ";
             }
             cerr << endl;
 
@@ -1939,7 +1945,7 @@ list<Path> XG::extract_threads() const {
             int64_t offset = j;
             
             // We need to un-const this int vector because DYNAMIC has no consts anywhere.
-            auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
+            dynamic_int_vector& nonconst_bs_iv = *bs_iv;
             
             while(true) {
                 // Unpack the side into a node traversal
@@ -1958,7 +1964,7 @@ list<Path> XG::extract_threads() const {
                 // Work out where we go
                 
                 // What edge of the available edges do we take?
-                int64_t edge_index = nonconst_bs_iv->at(nonconst_bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset);
+                int64_t edge_index = nonconst_bs_iv.at(nonconst_bs_iv.select(side - 2, BS_SEPARATOR) + 1 + offset);
                 
 #ifdef VERBOSE_DEBUG
                 cerr << "Group starts at " << nonconst_bs_iv->select(side - 2, BS_SEPARATOR) << endl;
@@ -2085,14 +2091,14 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
     }
 }
 
-size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
+size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
     size_t written = 0;
     
     // Convert the dynamic int vector to an SDSL int vector
-    int_vector<> converted(to_serialize.size());
+    int_vector<> converted(to_serialize->size());
     
-    for(size_t i = 0; i < to_serialize.size(); i++) {
-        converted[i] = to_serialize.at(i);
+    for(size_t i = 0; i < to_serialize->size(); i++) {
+        converted[i] = to_serialize->at(i);
     }
     
     written += converted.serialize(out, child, name);
@@ -2100,16 +2106,16 @@ size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::struc
     return written;
 }
 
-XG::dynamic_int_vector deserialize(istream& in) {
+XG::dynamic_int_vector* deserialize(istream& in) {
 
     int_vector<> to_convert;
 
     to_convert.load(in);
     
-    XG::dynamic_int_vector converted;
+    XG::dynamic_int_vector* converted = new XG::dynamic_int_vector;
     
     for(size_t i = 0; i < to_convert.size(); i++) {
-        converted.push_back(to_convert[i]);
+        converted->push_back(to_convert[i]);
     }
     
     return converted;

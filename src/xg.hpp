@@ -40,8 +40,9 @@ public:
                seq_length(0),
                node_count(0),
                edge_count(0),
-               path_count(0) { }
-    ~XG(void) { }
+               path_count(0),
+               bs_iv(nullptr) { }
+    ~XG(void);
     XG(istream& in);
     XG(Graph& graph);
     void from_stream(istream& in, bool validate_graph = false, bool print_graph = false);
@@ -274,7 +275,7 @@ private:
     // gets taken to the destination side, out of all edges we could take
     // leaving the node. We offset all the values up by 2, to make room for the
     // null sentinel and the separator.
-    dynamic_int_vector bs_iv;
+    dynamic_int_vector* bs_iv;
     
     // Constants used as sentinels in bs_iv above.
     const static int64_t BS_SEPARATOR = 1;
@@ -318,10 +319,10 @@ void parse_region(const string& target, string& name, int64_t& start, int64_t& e
 void to_text(ostream& out, Graph& graph);
 
 // Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(XG::dynamic_int_vector& to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
+size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
 
 // Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
-XG::dynamic_int_vector deserialize(istream& in);
+XG::dynamic_int_vector* deserialize(istream& in);
 
 // Determine if two edges are equivalent (the same or one is the reverse of the other)
 bool edges_equivalent(const Edge& e1, const Edge& e2);

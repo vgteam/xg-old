@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    XG* graph;
+    XG* graph = nullptr;
     //string file_name = argv[optind];
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
@@ -306,9 +306,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    // fail...
-    // must be implemented
-    //delete graph;
+    // clean up
+    if (graph) delete graph;
 
     return 0;
 }
