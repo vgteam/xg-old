@@ -1064,7 +1064,7 @@ string XG::pos_substr(int64_t id, bool is_rev, size_t off, size_t len) const {
         if (!len) {
             end = s_cbv_select(rank+1);
         } else {
-            end = min(start + len, s_cbv_select(rank+1));
+            end = min(start + len, (size_t)s_cbv_select(rank+1));
         }
         assert(end < s_iv.size());
         string s; s.resize(end-start);
@@ -1081,7 +1081,7 @@ string XG::pos_substr(int64_t id, bool is_rev, size_t off, size_t len) const {
         if (len > end || !len) {
             start = s_cbv_select(rank);
         } else {
-            start = max(end - len, s_cbv_select(rank));
+            start = max(end - len, (size_t)s_cbv_select(rank));
         }
         assert(end < s_iv.size());
         string s; s.resize(end-start);
