@@ -1554,7 +1554,6 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, const string& name) const {
     vector<size_t> ranks;
     size_t p = path_rank(name)-1;
     for (size_t i = 1; i <= node_occs_in_path(id, name); ++i) {
-#pragma omp critical (path_ids)
         ranks.push_back(paths[p]->ids.select(i, id));
         auto m = paths[p]->mapping(ranks.back());
     }
