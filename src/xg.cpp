@@ -53,6 +53,16 @@ XG::XG(Graph& graph)
     from_graph(graph);
 }
 
+XG::XG(function<void(function<void(Graph&)>)> get_chunks)
+    : start_marker('#'),
+      end_marker('$'),
+      seq_length(0),
+      node_count(0),
+      edge_count(0),
+      path_count(0) {
+    from_callback(std::move(get_chunks));
+}
+
 XG::~XG(void) {
      if (bs_iv != nullptr) delete bs_iv;
 }
@@ -343,6 +353,25 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
 
 void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
 
+    from_callback([&](function<void(Graph&)> handle_chunk) {
+        // TODO: should I be bandying about function references instead of
+        // function objects here?
+        stream::for_each(in, std::move(handle_chunk));
+    });
+}
+
+void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
+
+    from_callback([&](function<void(Graph&)> handle_chunk) {
+        // There's only one chunk in this case.
+        handle_chunk(graph);
+    });
+
+}
+
+void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks, 
+    bool validate_graph, bool print_graph) {
+
     // temporaries for construction
     map<int64_t, string> node_label;
     // need to store node sides
@@ -350,7 +379,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
     map<Side, set<Side> > to_from;
     map<string, map<int, Mapping> > path_nodes;
 
-    // we can always resize smaller, but not easily extend
+    // This takes in graph chunks and adds them into our temporary storage.
     function<void(Graph&)> lambda = [this,
                                      &node_label,
                                      &from_to,
@@ -393,53 +422,15 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
 #endif
         }
     };
-    stream::for_each(in, lambda);
+    
+    // Get all the chunks via the callback, and have them called back to us.
+    // The other end handles figuring out how much to loop.
+    get_chunks(lambda);
+    
     path_count = path_nodes.size();
 
     build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
-
-}
-
-void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
-
-    // temporaries for construction
-    map<int64_t, string> node_label;
-    // need to store node sides
-    map<Side, set<Side> > from_to;
-    map<Side, set<Side> > to_from;
-    map<string, map<int, Mapping>> path_nodes;
-
-    // we can always resize smaller, but not easily extend
-    for (int i = 0; i < graph.node_size(); ++i) {
-        const Node& n = graph.node(i);
-        if (node_label.find(n.id()) == node_label.end()) {
-            ++node_count;
-            seq_length += n.sequence().size();
-            node_label[n.id()] = n.sequence();
-        }
-    }
-    for (int i = 0; i < graph.edge_size(); ++i) {
-        const Edge& e = graph.edge(i);
-        if (from_to.find(Side(e.from(), e.from_start())) == from_to.end()
-            || from_to[Side(e.from(), e.from_start())].count(Side(e.to(), e.to_end())) == 0) {
-            ++edge_count;
-            from_to[Side(e.from(), e.from_start())].insert(Side(e.to(), e.to_end()));
-            to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
-        }
-    }
-    for (int i = 0; i < graph.path_size(); ++i) {
-        const Path& p = graph.path(i);
-        const string& name = p.name();
-        for (int j = 0; j < p.mapping_size(); ++j) {
-            const Mapping& m = p.mapping(j);
-            path_nodes[name][m.rank()] = m;
-        }
-    }
-
-    path_count = path_nodes.size();
-
-    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
-
+    
 }
 
 void XG::build(map<int64_t, string>& node_label,
