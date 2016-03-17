@@ -29,8 +29,9 @@ void help_main(char** argv) {
          << "    -t, --edges-to ID    list edges to node with ID" << endl
          << "    -O, --edges-of ID    list all edges related to node with ID" << endl
          << "    -S, --edges-on-start ID    list all edges on start of node with ID" << endl
-         << "    -E, --edges-on-end ID    list all edges on start of node with ID" << endl
+         << "    -E, --edges-on-end ID      list all edges on start of node with ID" << endl
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
+         << "    -x, --extract-threads      extract succinct threads as paths" << endl
          << "    -D, --debug          show debugging output" << endl
          << "    -T, --text-output    write text instead of vg protobuf" << endl
          << "    -h, --help           this text" << endl;
@@ -61,6 +62,7 @@ int main(int argc, char** argv) {
     bool print_graph = false;
     bool text_output = false;
     bool validate_graph = false;
+    bool extract_threads = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -83,6 +85,7 @@ int main(int argc, char** argv) {
                 {"edges-on-end", required_argument, 0, 'E'},
                 {"node-seq", required_argument, 0, 's'},
                 {"path", required_argument, 0, 'p'},
+                {"extract-threads", no_argument, 0, 'x'},
                 {"debug", no_argument, 0, 'D'},
                 {"text-output", no_argument, 0, 'T'},
                 {"validate", no_argument, 0, 'V'},
@@ -90,7 +93,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DTO:S:E:VP:F:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxTO:S:E:VP:F:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -118,6 +121,10 @@ int main(int argc, char** argv) {
 
         case 'T':
             text_output = true;
+            break;
+            
+        case 'x':
+            extract_threads = true;
             break;
 
         case 'i':
@@ -305,6 +312,33 @@ int main(int argc, char** argv) {
         } else {
             vector<Graph> gb = { g };
             stream::write_buffered(cout, gb, 0);
+        }
+    }
+    
+    if (extract_threads) {
+        
+    
+        size_t thread_number = 0;
+        for(Path& path : graph->extract_threads()) {
+            // Give each thread a name
+            path.set_name("_thread_" + to_string(thread_number++));
+            
+            // We need a Graph for serialization purposes. We do one chunk per
+            // thread in case the threads are long.
+            Graph g;
+            
+            *(g.add_path()) = path;
+            
+            // Dump the graph with its mappings. TODO: can we restrict these to
+            // mappings to nodes we have already pulled out? Or pull out the
+            // whole compressed graph?
+            if (text_output) {
+            to_text(cout, g);
+            } else {
+                vector<Graph> gb = { g };
+                stream::write_buffered(cout, gb, 0);
+            }
+            
         }
     }
 
