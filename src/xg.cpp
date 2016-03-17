@@ -1264,6 +1264,26 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
     }
 }
 
+Path XG::path(const string& name) const {
+    // Extract a whole path by name
+    
+    // First find the XGPath we're using to store it.
+    XGPath& xgpath = *(paths[path_rank(name)-1]);
+    
+    // Make a new path to fill in
+    Path to_return;
+    // Fill in the name
+    to_return.set_name(name);
+    
+    for(size_t i = 0; i < xgpath.member_count; i++) {
+        // For everything on the XGPath, put a Mapping on the real path.
+        *(to_return.add_mapping()) = xgpath.mapping(i);
+    }
+    
+    return to_return;
+    
+}
+
 size_t XG::path_rank(const string& name) const {
     // find the name in the csa
     string query = start_marker + name + end_marker;
