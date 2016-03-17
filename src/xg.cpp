@@ -1272,6 +1272,11 @@ size_t XG::path_rank(const string& name) const {
         cerr << "multiple hits for " << query << endl;
         assert(false);
     }
+    if(occs.size() == 0) {
+        // This path does not exist. Give back 0, which can never be a real path
+        // rank.
+        return 0;
+    }
     //cerr << "path named " << name << " is at " << occs[0] << endl;
     return pn_bv_rank(occs[0])+1; // step past '#'
 }

@@ -89,8 +89,13 @@ public:
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
 
     Path path(const string& name) const;
+    // Returns the rank of the path with the given name, or 0 if no such path
+    // exists.
     size_t path_rank(const string& name) const;
+    // Returns the maxiumum rank of any existing path. A path does exist at this
+    // rank.
     size_t max_path_rank(void) const;
+    // Get the name of the path at the given rank. Ranks begin at 1.
     string path_name(size_t rank) const;
     vector<size_t> paths_of_entity(size_t rank) const;
     vector<size_t> paths_of_node(int64_t id) const;
