@@ -60,7 +60,7 @@ XG::XG(function<void(function<void(Graph&)>)> get_chunks)
       node_count(0),
       edge_count(0),
       path_count(0) {
-    from_callback(std::move(get_chunks));
+    from_callback(get_chunks);
 }
 
 XG::~XG(void) {
@@ -356,8 +356,8 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // TODO: should I be bandying about function references instead of
         // function objects here?
-        stream::for_each(in, std::move(handle_chunk));
-    });
+        stream::for_each(in, handle_chunk);
+    }, validate_graph, print_graph);
 }
 
 void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
@@ -365,7 +365,7 @@ void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // There's only one chunk in this case.
         handle_chunk(graph);
-    });
+    }, validate_graph, print_graph);
 
 }
 
@@ -1974,7 +1974,7 @@ list<Path> XG::extract_threads() const {
 #ifdef VERBOSE_DEBUG
                 cerr << "At side " << side << endl;
                 
-                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) << " at " << nonconst_bs_iv->size() << endl;
+                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) << " at " << nonconst_bs_iv.size() << endl;
 #endif
                 // Work out where we go
                 
@@ -1982,8 +1982,8 @@ list<Path> XG::extract_threads() const {
                 int64_t edge_index = nonconst_bs_iv.at(nonconst_bs_iv.select(side - 2, BS_SEPARATOR) + 1 + offset);
                 
 #ifdef VERBOSE_DEBUG
-                cerr << "Group starts at " << nonconst_bs_iv->select(side - 2, BS_SEPARATOR) << endl;
-                int64_t outbound_count = ((side - 2 == nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv->size() : nonconst_bs_iv->select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv->select(side - 2, BS_SEPARATOR);
+                cerr << "Group starts at " << nonconst_bs_iv.select(side - 2, BS_SEPARATOR) << endl;
+                int64_t outbound_count = ((side - 2 == nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv.size() : nonconst_bs_iv.select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv.select(side - 2, BS_SEPARATOR);
                 cerr << "Local B entry " << offset << " of " << outbound_count << endl;
                 assert(offset < outbound_count);
 #endif
