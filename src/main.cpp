@@ -199,6 +199,17 @@ int main(int argc, char** argv) {
         graph->from_stream(in, validate_graph, print_graph);
     }
 
+    if (in_name.size()) {
+        graph = new XG;
+        if (in_name == "-") {
+            graph->load(std::cin);
+        } else {
+            ifstream in;
+            in.open(in_name.c_str());
+            graph->load(in);
+        }
+    }
+
     if (out_name.size()) {
         if (out_name == "-") {
             graph->serialize(std::cout);
@@ -211,16 +222,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (in_name.size()) {
-        graph = new XG;
-        if (in_name == "-") {
-            graph->load(std::cin);
-        } else {
-            ifstream in;
-            in.open(in_name.c_str());
-            graph->load(in);
-        }
-    }
+    
 
     // queries
     if (node_sequence) {
