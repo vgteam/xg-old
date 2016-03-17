@@ -7,8 +7,8 @@ BIN_DIR:=bin
 SRC_DIR:=src
 CPP_DIR:=cpp
 
-CXX=g++
-CXXFLAGS=-O3 -std=c++11 -fopenmp -ggdb
+CXX?=g++
+CXXFLAGS=-O3 -std=c++11 -fopenmp -g
 OBJ=cpp/vg.pb.o xg.o # main.o not included for easier libxg.a creation
 LD_INCLUDES=-I./ -Icpp -Istream/src -IDYNAMIC/include -IDYNAMIC/include/internal -IDYNAMIC/include/algorithms -I$(SRC_DIR)
 LD_LIBS=-lprotobuf -lsdsl -lz -ldivsufsort -ldivsufsort64 -lgomp -lm -lpthread
