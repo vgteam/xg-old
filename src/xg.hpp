@@ -50,7 +50,7 @@ public:
     void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false);
     // Load the graph by calling a function that calls us back with graph chunks.
     // The function passed in here is responsible for looping.
-    void from_callback(const function<void(function<void(Graph&)>)> get_chunks,
+    void from_callback(function<void(function<void(Graph&)>)> get_chunks,
         bool validate_graph = false, bool print_graph = false); 
     void build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
