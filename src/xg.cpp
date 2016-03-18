@@ -53,6 +53,16 @@ XG::XG(Graph& graph)
     from_graph(graph);
 }
 
+XG::XG(function<void(function<void(Graph&)>)> get_chunks)
+    : start_marker('#'),
+      end_marker('$'),
+      seq_length(0),
+      node_count(0),
+      edge_count(0),
+      path_count(0) {
+    from_callback(get_chunks);
+}
+
 XG::~XG(void) {
      if (bs_iv != nullptr) delete bs_iv;
 }
@@ -343,6 +353,25 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
 
 void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
 
+    from_callback([&](function<void(Graph&)> handle_chunk) {
+        // TODO: should I be bandying about function references instead of
+        // function objects here?
+        stream::for_each(in, handle_chunk);
+    }, validate_graph, print_graph);
+}
+
+void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
+
+    from_callback([&](function<void(Graph&)> handle_chunk) {
+        // There's only one chunk in this case.
+        handle_chunk(graph);
+    }, validate_graph, print_graph);
+
+}
+
+void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks, 
+    bool validate_graph, bool print_graph) {
+
     // temporaries for construction
     map<int64_t, string> node_label;
     // need to store node sides
@@ -350,7 +379,7 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
     map<Side, set<Side> > to_from;
     map<string, map<int, Mapping> > path_nodes;
 
-    // we can always resize smaller, but not easily extend
+    // This takes in graph chunks and adds them into our temporary storage.
     function<void(Graph&)> lambda = [this,
                                      &node_label,
                                      &from_to,
@@ -393,53 +422,15 @@ void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
 #endif
         }
     };
-    stream::for_each(in, lambda);
+    
+    // Get all the chunks via the callback, and have them called back to us.
+    // The other end handles figuring out how much to loop.
+    get_chunks(lambda);
+    
     path_count = path_nodes.size();
 
     build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
-
-}
-
-void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
-
-    // temporaries for construction
-    map<int64_t, string> node_label;
-    // need to store node sides
-    map<Side, set<Side> > from_to;
-    map<Side, set<Side> > to_from;
-    map<string, map<int, Mapping>> path_nodes;
-
-    // we can always resize smaller, but not easily extend
-    for (int i = 0; i < graph.node_size(); ++i) {
-        const Node& n = graph.node(i);
-        if (node_label.find(n.id()) == node_label.end()) {
-            ++node_count;
-            seq_length += n.sequence().size();
-            node_label[n.id()] = n.sequence();
-        }
-    }
-    for (int i = 0; i < graph.edge_size(); ++i) {
-        const Edge& e = graph.edge(i);
-        if (from_to.find(Side(e.from(), e.from_start())) == from_to.end()
-            || from_to[Side(e.from(), e.from_start())].count(Side(e.to(), e.to_end())) == 0) {
-            ++edge_count;
-            from_to[Side(e.from(), e.from_start())].insert(Side(e.to(), e.to_end()));
-            to_from[Side(e.to(), e.to_end())].insert(Side(e.from(), e.from_start()));
-        }
-    }
-    for (int i = 0; i < graph.path_size(); ++i) {
-        const Path& p = graph.path(i);
-        const string& name = p.name();
-        for (int j = 0; j < p.mapping_size(); ++j) {
-            const Mapping& m = p.mapping(j);
-            path_nodes[name][m.rank()] = m;
-        }
-    }
-
-    path_count = path_nodes.size();
-
-    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
-
+    
 }
 
 void XG::build(map<int64_t, string>& node_label,
@@ -1273,6 +1264,26 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
     }
 }
 
+Path XG::path(const string& name) const {
+    // Extract a whole path by name
+    
+    // First find the XGPath we're using to store it.
+    XGPath& xgpath = *(paths[path_rank(name)-1]);
+    
+    // Make a new path to fill in
+    Path to_return;
+    // Fill in the name
+    to_return.set_name(name);
+    
+    for(size_t i = 0; i < xgpath.member_count; i++) {
+        // For everything on the XGPath, put a Mapping on the real path.
+        *(to_return.add_mapping()) = xgpath.mapping(i);
+    }
+    
+    return to_return;
+    
+}
+
 size_t XG::path_rank(const string& name) const {
     // find the name in the csa
     string query = start_marker + name + end_marker;
@@ -1280,6 +1291,11 @@ size_t XG::path_rank(const string& name) const {
     if (occs.size() > 1) {
         cerr << "multiple hits for " << query << endl;
         assert(false);
+    }
+    if(occs.size() == 0) {
+        // This path does not exist. Give back 0, which can never be a real path
+        // rank.
+        return 0;
     }
     //cerr << "path named " << name << " is at " << occs[0] << endl;
     return pn_bv_rank(occs[0])+1; // step past '#'
@@ -1958,7 +1974,7 @@ list<Path> XG::extract_threads() const {
 #ifdef VERBOSE_DEBUG
                 cerr << "At side " << side << endl;
                 
-                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) << " at " << nonconst_bs_iv->size() << endl;
+                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) << " at " << nonconst_bs_iv.size() << endl;
 #endif
                 // Work out where we go
                 
@@ -1966,8 +1982,8 @@ list<Path> XG::extract_threads() const {
                 int64_t edge_index = nonconst_bs_iv.at(nonconst_bs_iv.select(side - 2, BS_SEPARATOR) + 1 + offset);
                 
 #ifdef VERBOSE_DEBUG
-                cerr << "Group starts at " << nonconst_bs_iv->select(side - 2, BS_SEPARATOR) << endl;
-                int64_t outbound_count = ((side - 2 == nonconst_bs_iv->rank(nonconst_bs_iv->size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv->size() : nonconst_bs_iv->select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv->select(side - 2, BS_SEPARATOR);
+                cerr << "Group starts at " << nonconst_bs_iv.select(side - 2, BS_SEPARATOR) << endl;
+                int64_t outbound_count = ((side - 2 == nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv.size() : nonconst_bs_iv.select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv.select(side - 2, BS_SEPARATOR);
                 cerr << "Local B entry " << offset << " of " << outbound_count << endl;
                 assert(offset < outbound_count);
 #endif
