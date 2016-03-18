@@ -351,26 +351,26 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     
 }
 
-void XG::from_stream(istream& in, bool validate_graph, bool print_graph) {
+void XG::from_stream(istream& in, bool validate_graph, bool print_graph, bool store_threads) {
 
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // TODO: should I be bandying about function references instead of
         // function objects here?
         stream::for_each(in, handle_chunk);
-    }, validate_graph, print_graph);
+    }, validate_graph, print_graph, store_threads);
 }
 
-void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph) {
+void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph, bool store_threads) {
 
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // There's only one chunk in this case.
         handle_chunk(graph);
-    }, validate_graph, print_graph);
+    }, validate_graph, print_graph, store_threads);
 
 }
 
 void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks, 
-    bool validate_graph, bool print_graph) {
+    bool validate_graph, bool print_graph, bool store_threads) {
 
     // temporaries for construction
     map<int64_t, string> node_label;
@@ -429,7 +429,7 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
     
     path_count = path_nodes.size();
 
-    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph);
+    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph, store_threads);
     
 }
 
@@ -438,7 +438,8 @@ void XG::build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& to_from,
                map<string, map<int, Mapping>>& path_nodes,
                bool validate_graph,
-               bool print_graph) {
+               bool print_graph,
+               bool store_threads) {
 
     size_t entity_count = node_count + edge_count;
 #ifdef VERBOSE_DEBUG
@@ -674,50 +675,53 @@ void XG::build(map<int64_t, string>& node_label,
     util::assign(ep_bv_rank, rank_support_v<1>(&ep_bv));
     util::assign(ep_bv_select, bit_vector::select_1_type(&ep_bv));
 
+    if(store_threads) {
+
 #ifdef VERBOSE_DEBUG
-    cerr << "storing threads" << endl;
+        cerr << "storing threads" << endl;
 #endif
     
-    // Just store all the paths that are all perfect mappings as threads.
-    // We end up converting *back* into Path objects.
-    for (auto& pathpair : path_nodes) {
-        Path reconstructed;
-        
-        // Grab the name
-        reconstructed.set_name(pathpair.first);
-        
-        bool all_perfect = true;
-        
-        // Grab the Mappings, which are now sorted by rank
-        for (auto& m : pathpair.second) {
-            *reconstructed.add_mapping() = m.second;
+        // Just store all the paths that are all perfect mappings as threads.
+        // We end up converting *back* into Path objects.
+        for (auto& pathpair : path_nodes) {
+            Path reconstructed;
             
-            // Make sure the mapping is perfect
-            // TODO: handle offsets
-            if(m.second.edit_size() > 1) {
-                // Not a perfect mapping
-                all_perfect = false;
-                break;
-            } else if(m.second.edit_size() == 0) {
-                // Is a perfect mapping
-                continue;
-            } else {
-                // We have exactly one edit. Is it perfect?
-                auto edit = m.second.edit(0);
+            // Grab the name
+            reconstructed.set_name(pathpair.first);
+            
+            bool all_perfect = true;
+            
+            // Grab the Mappings, which are now sorted by rank
+            for (auto& m : pathpair.second) {
+                *reconstructed.add_mapping() = m.second;
                 
-                if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
-                    // The edit calls for actual editing
+                // Make sure the mapping is perfect
+                // TODO: handle offsets
+                if(m.second.edit_size() > 1) {
+                    // Not a perfect mapping
                     all_perfect = false;
                     break;
+                } else if(m.second.edit_size() == 0) {
+                    // Is a perfect mapping
+                    continue;
+                } else {
+                    // We have exactly one edit. Is it perfect?
+                    auto edit = m.second.edit(0);
+                    
+                    if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
+                        // The edit calls for actual editing
+                        all_perfect = false;
+                        break;
+                    }
                 }
             }
+            
+            if(all_perfect) {
+                // We actually want to insert this path as a thread
+                insert_thread(reconstructed);
+            }
+            
         }
-        
-        if(all_perfect) {
-            // We actually want to insert this path as a thread
-            insert_thread(reconstructed);
-        }
-        
     }
     
 
@@ -931,72 +935,75 @@ void XG::build(map<int64_t, string>& node_label,
             // check membership now for each entity in the path
         }
         
-        cerr << "validating threads" << endl;
+        if(store_threads) {
         
-        // How many thread orientations are in the index?
-        size_t threads_found = 0;
-        // And how many shoukd we have inserted?
-        size_t threads_expected = 0;
-        
-        for(auto path : extract_threads()) {
+            cerr << "validating threads" << endl;
+            
+            // How many thread orientations are in the index?
+            size_t threads_found = 0;
+            // And how many shoukd we have inserted?
+            size_t threads_expected = 0;
+            
+            for(auto path : extract_threads()) {
 #ifdef VERBOSE_DEBUG
-            cerr << "Path: ";
-            for(size_t i = 0; i < path.mapping_size(); i++) {
-                Mapping mapping = path.mapping(i);
-                cerr << mapping.position().node_id() * 2 + mapping.position().is_reverse() << "; ";
-            }
-            cerr << endl;
+                cerr << "Path: ";
+                for(size_t i = 0; i < path.mapping_size(); i++) {
+                    Mapping mapping = path.mapping(i);
+                    cerr << mapping.position().node_id() * 2 + mapping.position().is_reverse() << "; ";
+                }
+                cerr << endl;
 #endif
-            // Make sure we can search all the threads we find present in the index
-            assert(count_matches(path) > 0);
-            
-            threads_found++;
-        }
-        
-        for (auto& pathpair : path_nodes) {
-            Path reconstructed;
-            
-            // Grab the name
-            reconstructed.set_name(pathpair.first);
-            
-            bool all_perfect = true;
-            
-            // Grab the Mappings, which are now sorted by rank
-            for (auto& m : pathpair.second) {
-                *reconstructed.add_mapping() = m.second;
+                // Make sure we can search all the threads we find present in the index
+                assert(count_matches(path) > 0);
                 
-                // Make sure the mapping is perfect
-                // TODO: handle offsets
-                if(m.second.edit_size() > 1) {
-                    // Not a perfect mapping
-                    all_perfect = false;
-                    break;
-                } else if(m.second.edit_size() == 0) {
-                    // Is a perfect mapping
-                    continue;
-                } else {
-                    // We have exactly one edit. Is it perfect?
-                    auto edit = m.second.edit(0);
+                threads_found++;
+            }
+            
+            for (auto& pathpair : path_nodes) {
+                Path reconstructed;
+                
+                // Grab the name
+                reconstructed.set_name(pathpair.first);
+                
+                bool all_perfect = true;
+                
+                // Grab the Mappings, which are now sorted by rank
+                for (auto& m : pathpair.second) {
+                    *reconstructed.add_mapping() = m.second;
                     
-                    if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
-                        // The edit calls for actual editing
+                    // Make sure the mapping is perfect
+                    // TODO: handle offsets
+                    if(m.second.edit_size() > 1) {
+                        // Not a perfect mapping
                         all_perfect = false;
                         break;
+                    } else if(m.second.edit_size() == 0) {
+                        // Is a perfect mapping
+                        continue;
+                    } else {
+                        // We have exactly one edit. Is it perfect?
+                        auto edit = m.second.edit(0);
+                        
+                        if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
+                            // The edit calls for actual editing
+                            all_perfect = false;
+                            break;
+                        }
                     }
                 }
-            }
-            
-            if(all_perfect) {
-                // This path should have been inserted. Look for it.
-                assert(count_matches(reconstructed) > 0);
                 
-                threads_expected += 2;
+                if(all_perfect) {
+                    // This path should have been inserted. Look for it.
+                    assert(count_matches(reconstructed) > 0);
+                    
+                    threads_expected += 2;
+                }
+                
             }
             
+            // Make sure we have the right number of threads.
+            assert(threads_found == threads_expected);
         }
-        
-        // Make sure we have the right number of threads.
-        assert(threads_found == threads_expected);
 
         cerr << "graph ok" << endl;
     }
@@ -2107,33 +2114,18 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
 }
 
 size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
-    size_t written = 0;
-    
-    // Convert the dynamic int vector to an SDSL int vector
-    int_vector<> converted(to_serialize->size());
-    
-    for(size_t i = 0; i < to_serialize->size(); i++) {
-        converted[i] = to_serialize->at(i);
-    }
-    
-    written += converted.serialize(out, child, name);
-    
-    return written;
+    // We just use the DYNAMIC serialization and ignore the SDSL parameters for now.
+    // TODO: do something smart with the SDSL structure tree   
+    return to_serialize->serialize(out);
 }
 
 XG::dynamic_int_vector* deserialize(istream& in) {
-
-    int_vector<> to_convert;
-
-    to_convert.load(in);
+    // We just load using the DYNAMIC deserialization code
+    XG::dynamic_int_vector* loaded = new XG::dynamic_int_vector;
     
-    XG::dynamic_int_vector* converted = new XG::dynamic_int_vector;
+    loaded->load(in);
     
-    for(size_t i = 0; i < to_convert.size(); i++) {
-        converted->push_back(to_convert[i]);
-    }
-    
-    return converted;
+    return loaded;
 }
 
 bool edges_equivalent(const Edge& e1, const Edge& e2) {
