@@ -57,7 +57,7 @@ sdsl-lite/: $(CMAKE_BIN)
 
 DYNAMIC/:
 	git clone --recursive https://github.com/vgteam/DYNAMIC.git
-	cd DYNAMIC && git checkout cfd3ae7
+	cd DYNAMIC && git checkout 2a82bbf
 
 get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/
 	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH

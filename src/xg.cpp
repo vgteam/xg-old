@@ -2114,33 +2114,18 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
 }
 
 size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
-    size_t written = 0;
-    
-    // Convert the dynamic int vector to an SDSL int vector
-    int_vector<> converted(to_serialize->size());
-    
-    for(size_t i = 0; i < to_serialize->size(); i++) {
-        converted[i] = to_serialize->at(i);
-    }
-    
-    written += converted.serialize(out, child, name);
-    
-    return written;
+    // We just use the DYNAMIC serialization and ignore the SDSL parameters for now.
+    // TODO: do something smart with the SDSL structure tree   
+    return to_serialize->serialize(out);
 }
 
 XG::dynamic_int_vector* deserialize(istream& in) {
-
-    int_vector<> to_convert;
-
-    to_convert.load(in);
+    // We just load using the DYNAMIC deserialization code
+    XG::dynamic_int_vector* loaded = new XG::dynamic_int_vector;
     
-    XG::dynamic_int_vector* converted = new XG::dynamic_int_vector;
+    loaded->load(in);
     
-    for(size_t i = 0; i < to_convert.size(); i++) {
-        converted->push_back(to_convert[i]);
-    }
-    
-    return converted;
+    return loaded;
 }
 
 bool edges_equivalent(const Edge& e1, const Edge& e2) {
