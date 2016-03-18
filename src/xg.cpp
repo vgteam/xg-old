@@ -1275,7 +1275,12 @@ Path XG::path(const string& name) const {
     // Fill in the name
     to_return.set_name(name);
     
-    for(size_t i = 0; i < xgpath.member_count; i++) {
+    // We know paths start and end with node members, and that the node members
+    // are separated by edge members. So we need to be able to get just the node
+    // members.
+    size_t total_nodes = (xgpath.member_count + 1) / 2;
+    
+    for(size_t i = 0; i < total_nodes; i++) {
         // For everything on the XGPath, put a Mapping on the real path.
         *(to_return.add_mapping()) = xgpath.mapping(i);
     }
