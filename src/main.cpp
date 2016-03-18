@@ -32,6 +32,7 @@ void help_main(char** argv) {
          << "    -E, --edges-on-end ID      list all edges on start of node with ID" << endl
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
          << "    -x, --extract-threads      extract succinct threads as paths" << endl
+         << "    -r, --store-threads  store perfect match paths as succinct threads" << endl
          << "    -D, --debug          show debugging output" << endl
          << "    -T, --text-output    write text instead of vg protobuf" << endl
          << "    -h, --help           this text" << endl;
@@ -63,6 +64,7 @@ int main(int argc, char** argv) {
     bool text_output = false;
     bool validate_graph = false;
     bool extract_threads = false;
+    bool store_threads = false;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -86,6 +88,7 @@ int main(int argc, char** argv) {
                 {"node-seq", required_argument, 0, 's'},
                 {"path", required_argument, 0, 'p'},
                 {"extract-threads", no_argument, 0, 'x'},
+                {"store-threads", no_argument, 0, 'r'},
                 {"debug", no_argument, 0, 'D'},
                 {"text-output", no_argument, 0, 'T'},
                 {"validate", no_argument, 0, 'V'},
@@ -93,7 +96,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxTO:S:E:VP:F:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxrTO:S:E:VP:F:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -125,6 +128,10 @@ int main(int argc, char** argv) {
             
         case 'x':
             extract_threads = true;
+            break;
+            
+        case 'r':
+            store_threads = true;
             break;
 
         case 'i':
@@ -198,12 +205,12 @@ int main(int argc, char** argv) {
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
         graph = new XG;
-        graph->from_stream(std::cin, validate_graph, print_graph);
+        graph->from_stream(std::cin, validate_graph, print_graph, store_threads);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
         graph = new XG;
-        graph->from_stream(in, validate_graph, print_graph);
+        graph->from_stream(in, validate_graph, print_graph, store_threads);
     }
 
     if (in_name.size()) {

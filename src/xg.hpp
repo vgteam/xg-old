@@ -46,18 +46,19 @@ public:
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
-    void from_stream(istream& in, bool validate_graph = false, bool print_graph = false);
-    void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false);
+    void from_stream(istream& in, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
+    void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
     // Load the graph by calling a function that calls us back with graph chunks.
     // The function passed in here is responsible for looping.
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
-        bool validate_graph = false, bool print_graph = false); 
+        bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
     void build(map<int64_t, string>& node_label,
                map<Side, set<Side> >& from_to,
                map<Side, set<Side> >& to_from,
                map<string, map<int, Mapping>>& path_nodes,
                bool validate_graph,
-               bool print_graph);
+               bool print_graph,
+               bool store_threads);
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
