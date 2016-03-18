@@ -255,10 +255,11 @@ XGPath::XGPath(const string& path_name,
                         make_pair(id1, !rev1)
                         ));
             } else {
-                cerr << "graph does not have edge from "
+                cerr << "[xg] warning: graph does not have edge from "
                      << node_id << (path[i].position().is_reverse()?"+":"-")
                      << " to "
                      << next_node_id << (path[i+1].position().is_reverse()?"-":"+")
+                     << " for path " << path_name
                      << endl;
             }
         }
