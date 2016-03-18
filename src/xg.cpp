@@ -1811,22 +1811,29 @@ void XG::insert_thread(const Path& t) {
                 
                 // Look at the edges we could have taken
                 vector<Edge> edges_out = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
-                for(int64_t i = 0; i < edges_out.size(); i++) {
-                    if(edge_taken_index == -1 && edges_equivalent(edges_out[i], edge_wanted)) {
+                for(int64_t j = 0; j < edges_out.size(); j++) {
+                    if(edge_taken_index == -1 && edges_equivalent(edges_out[j], edge_wanted)) {
                         // i is the index of the edge we took, of the edges available to us.
-                        edge_taken_index = i;
+                        edge_taken_index = j;
                     }
 #ifdef VERBOSE_DEBUG
-                    cerr << "Edge #" << i << ": "  << edges_out[i].from() << (edges_out[i].from_start() ? "L" : "R") << "-" << edges_out[i].to() << (edges_out[i].to_end() ? "R" : "L") << endl;
+                    cerr << "Edge #" << j << ": "  << edges_out[j].from() << (edges_out[j].from_start() ? "L" : "R") << "-" << edges_out[j].to() << (edges_out[j].to_end() ? "R" : "L") << endl;
                     
                     // Work out what its number is for the orientation it goes
                     // out in. We know we have this edge, so we just see if we
                     // have to depart in reveres and if so take the edge in
                     // reverse.
-                    int64_t edge_orientation_number = (edge_rank_as_entity(edges_out[i]) - 1) * 2 + depart_by_reverse(edges_out[i], node_id, node_is_reverse);
+                    int64_t edge_orientation_number = (edge_rank_as_entity(edges_out[j]) - 1) * 2 + depart_by_reverse(edges_out[j], node_id, node_is_reverse);
                     
                     cerr << "\tOrientation rank: " << edge_orientation_number << endl;
 #endif
+                }
+                
+                if(edge_taken_index == -1) {
+                    cerr << "[xg] error: step " << i << " of thread " << thread.name() << ": "
+                        << edge_wanted.from() << (edge_wanted.from_start() ? "L" : "R") << "-" 
+                        << edge_wanted.to() << (edge_wanted.to_end() ? "R" : "L") << " does not exist" << endl;
+                    assert(false);
                 }
                 
                 assert(edge_taken_index != -1);
