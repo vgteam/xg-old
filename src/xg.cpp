@@ -1208,7 +1208,9 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     */
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
-    size_t f_start = f_bv_select(rank1);
+    // Start looking after the value that corresponds to the node itself.
+    // Otherwise we'll think every self loop exists.
+    size_t f_start = f_bv_select(rank1) + 1;
     size_t f_end = rank1 == node_count ? f_bv.size() : f_bv_select(rank1+1);
     for (size_t i = f_start; i < f_end; ++i) {
         if (rank2 == f_iv[i]
@@ -1833,6 +1835,31 @@ void XG::insert_thread(const Path& t) {
                     cerr << "[xg] error: step " << i << " of thread " << thread.name() << ": "
                         << edge_wanted.from() << (edge_wanted.from_start() ? "L" : "R") << "-" 
                         << edge_wanted.to() << (edge_wanted.to_end() ? "R" : "L") << " does not exist" << endl;
+                    cerr << "[xg] error: Possibilities: ";
+                    for(Edge& edge_out : edges_out) {
+                        cerr << edge_out.from() << (edge_out.from_start() ? "L" : "R") << "-" 
+                            << edge_out.to() << (edge_out.to_end() ? "R" : "L") << " ";
+                    }
+                    cerr << endl;
+                    cerr << "[xg] error: On start: ";
+                    for(Edge& edge_out : edges_on_start(node_id)) {
+                        cerr << edge_out.from() << (edge_out.from_start() ? "L" : "R") << "-" 
+                            << edge_out.to() << (edge_out.to_end() ? "R" : "L") << " ";
+                    }
+                    cerr << endl;
+                    cerr << "[xg] error: On end: ";
+                    for(Edge& edge_out : edges_on_end(node_id)) {
+                        cerr << edge_out.from() << (edge_out.from_start() ? "L" : "R") << "-" 
+                            << edge_out.to() << (edge_out.to_end() ? "R" : "L") << " ";
+                    }
+                    cerr << endl;
+                    cerr << "[xg] error: Both: ";
+                    for(Edge& edge_out : edges_of(node_id)) {
+                        cerr << edge_out.from() << (edge_out.from_start() ? "L" : "R") << "-" 
+                            << edge_out.to() << (edge_out.to_end() ? "R" : "L") << " ";
+                    }
+                    cerr << endl;
+                    cerr << "[xg] error: has_edge: " << has_edge(edge_wanted.from(), edge_wanted.from_start(), edge_wanted.to(), edge_wanted.to_end()) << endl;
                     assert(false);
                 }
                 
