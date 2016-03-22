@@ -2216,8 +2216,17 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
 }
 
 size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name) {
+    
+    // We need to check to make sure we're actually writing the correct numbers of bytes.
+    size_t start = out.tellp();
+    
     // We just use the DYNAMIC serialization.  
     size_t written = to_serialize->serialize(out);
+    
+    // TODO: when https://github.com/nicolaprezza/DYNAMIC/issues/4 is closed,
+    // trust the sizes that DYNAMIC reports. For now, second-guess it and just
+    // look at how far the stream has actually moved.
+    written = (size_t) out.tellp() - start;
     
     // And then do the structure tree stuff
     sdsl::structure_tree_node* child = structure_tree::add_child(parent, name, sdsl::util::class_name(to_serialize));
