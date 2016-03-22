@@ -345,7 +345,6 @@ public:
            size_t entity_count,
            XG& graph,
            size_t* unique_member_count_out = nullptr);
-
     // Path names are stored in the XG object, in a compressed fashion, and are
     // not duplicated here.
     
