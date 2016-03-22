@@ -309,14 +309,20 @@ private:
 
 class XGPath {
 public:
-    XGPath(void) : member_count(0) { }
+    XGPath(void) { }
     ~XGPath(void) { }
+    // Path name is required here only for complaining intelligently when
+    // something goes wrong. We can also spit out the total unique members,
+    // because in here is the most efficient place to count them.
     XGPath(const string& path_name,
            const vector<trav_t>& path,
            size_t entity_count,
-           XG& graph);
-    string name;
-    size_t member_count;
+           XG& graph,
+           size_t* unique_member_count_out = nullptr);
+
+    // Path names are stored in the XG object, in a compressed fashion, and are
+    // not duplicated here.
+    
     sd_vector<> members;
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
