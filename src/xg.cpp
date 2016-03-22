@@ -2194,10 +2194,15 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
     }
 }
 
-size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
-    // We just use the DYNAMIC serialization and ignore the SDSL parameters for now.
-    // TODO: do something smart with the SDSL structure tree   
-    return to_serialize->serialize(out);
+size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name) {
+    // We just use the DYNAMIC serialization.  
+    size_t written = to_serialize->serialize(out);
+    
+    // And then do the structure tree stuff
+    sdsl::structure_tree_node* child = structure_tree::add_child(parent, name, sdsl::util::class_name(to_serialize));
+    sdsl::structure_tree::add_size(child, written);
+    
+    return written;
 }
 
 XG::dynamic_int_vector* deserialize(istream& in) {

@@ -338,7 +338,7 @@ void parse_region(const string& target, string& name, int64_t& start, int64_t& e
 void to_text(ostream& out, Graph& graph);
 
 // Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name);
+size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name);
 
 // Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
 XG::dynamic_int_vector* deserialize(istream& in);
