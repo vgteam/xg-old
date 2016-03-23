@@ -163,7 +163,7 @@ public:
     // gPBWT interface
     
     // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
-    using dynamic_int_vector = dyn::wt_str;
+    using dynamic_int_vector = dyn::rle_str;
     
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
