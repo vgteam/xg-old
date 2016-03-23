@@ -61,6 +61,9 @@ char revdna3bit(int i) {
     }
 }
 
+const XG::destination_t XG::BS_SEPARATOR = 1;
+const XG::destination_t XG::BS_NULL = 0;
+
 XG::XG(istream& in)
     : start_marker('#'),
       end_marker('$'),
@@ -2132,17 +2135,10 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     
     assert(edge_taken_index != -1);
     
-    // We need to un-const this int vector because DYNAMIC has no consts anywhere.
-    //auto nonconst_bs_iv = const_cast<dynamic_int_vector*>(&bs_iv);
-    dynamic_int_vector& nonconst_bs_iv = *bs_iv;
-    
-    // Where does the B_s[] range for the side we're leaving start?
-    int64_t bs_start = nonconst_bs_iv.select(current_side - 2, BS_SEPARATOR) + 1;
-    
     // Get the rank in B_s[] for our current side of our visit offset among
     // B_s[] entries pointing to the new node and add that in. Make sure to +2
     // to account for the nulls and separators.
-    int64_t contribution = nonconst_bs_iv.rank(bs_start + visit_offset, edge_taken_index + 2) - nonconst_bs_iv.rank(bs_start, edge_taken_index + 2);
+    int64_t contribution = bs_rank(current_side, visit_offset, edge_taken_index + 2);
 #ifdef VERBOSE_DEBUG
     cerr << contribution << " (via this edge) + ";
 #endif
@@ -2173,14 +2169,8 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
         
         int64_t node_side = id_to_rank(node_id) * 2 + is_reverse;
         
-        // Where does the block we want to insert in the B_s arrays start?
-        size_t bs_insert_index = bs_iv->select(node_side - 2, BS_SEPARATOR) + 1;
-        
-        for(auto destination : destinations) {
-            // Blit everything into the B_s array
-            bs_iv->insert(bs_insert_index, destination);
-            bs_insert_index++;
-        }
+        // Copy all the destinations into the succinct B_s storage
+        bs_set(node_side, destinations);
         
         // Set the number of total visits to this side.
         h_iv[(node_rank_as_entity(node_id) - 1) * 2 + is_reverse] = destinations.size();

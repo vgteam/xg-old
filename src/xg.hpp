@@ -347,11 +347,11 @@ private:
     
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
-    using destination_t = int64_t;
+    using destination_t = size_t;
     
     // Constants used as sentinels in bs_iv above.
-    const static destination_t BS_SEPARATOR = 1;
-    const static destination_t BS_NULL = 0;
+    const static destination_t BS_SEPARATOR;
+    const static destination_t BS_NULL;
     
     // We access this only through these wrapper methods, because we're going to
     // swap out functionality.
