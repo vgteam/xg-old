@@ -176,8 +176,9 @@ public:
     // threads in a node must all run in the same direction.) This uses a
     // special efficient batch insert algorithm for DAGs that lets us just scan
     // the graph and generate nodes' B_s arrays independently. This must be
-    // called only once, and no threads can have been inserted previously. Any
-    // threads already in the graph will be discarded.
+    // called only once, and no threads can have been inserted previously.
+    // Otherwise the gPBWT data structures will be left in an inconsistent
+    // state.
     void insert_threads_into_dag(const vector<Path>& t);
     // Read all the threads embedded in the graph.
     list<Path> extract_threads() const;
