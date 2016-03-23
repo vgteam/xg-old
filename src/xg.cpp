@@ -2697,6 +2697,46 @@ list<Path> XG::extract_threads() const {
     return found;
 }
 
+XG::destination_t XG::bs_get(int64_t side, int64_t offset) const {
+    // Start after the separator for the side and go offset from there.
+    return bs_iv->at(bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset);
+}
+
+size_t XG::bs_rank(int64_t side, int64_t offset, destination_t value) const {
+    // Where does the B_s[] range for the side we're interested in start?
+    int64_t bs_start = bs_iv->select(side - 2, BS_SEPARATOR) + 1;
+    
+    // Get the rank difference between the start and the start plus the offset.
+    return bs_iv->rank(bs_start + offset, value) - bs_iv->rank(bs_start, value);
+}
+
+void XG::bs_set(int64_t side, vector<destination_t> new_array) {
+    // Where does the block we want start?
+    size_t this_range_start = bs_iv->select(side - 2, BS_SEPARATOR) + 1;
+    
+    // Where is the first spot not in the range for this side?
+    int64_t this_range_past_end = (side - 2 == bs_iv->rank(bs_iv->size(), BS_SEPARATOR) - 1 ?
+        bs_iv->size() : bs_iv->select(side - 2 + 1, BS_SEPARATOR));
+    
+    if(this_range_start != this_range_past_end) {
+        // We can't overwrite! Just explode.
+        throw runtime_error("B_s overwrite not supported");
+    }
+    
+    size_t bs_insert_index = this_range_start;
+    
+    for(auto destination : new_array) {
+        // Blit everything into the B_s array
+        bs_iv->insert(bs_insert_index, destination);
+        bs_insert_index++;
+    }
+}
+
+void XG::bs_insert(int64_t side, int64_t offset, destination_t value) {
+    // Find the place to put it in the correct side's B_s and insert
+    bs_iv->insert(bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset, value);
+}
+
 size_t XG::count_matches(const Path& t) const {
     // This is just a really simple wrapper that does a single extend
     ThreadSearchState state;

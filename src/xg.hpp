@@ -345,9 +345,29 @@ private:
     // null sentinel and the separator.
     dynamic_int_vector* bs_iv;
     
+    // A "destination" is either a local edge number + 2, BS_NULL for stopping,
+    // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
+    using destination_t = int64_t;
+    
     // Constants used as sentinels in bs_iv above.
-    const static int64_t BS_SEPARATOR = 1;
-    const static int64_t BS_NULL = 0;
+    const static destination_t BS_SEPARATOR = 1;
+    const static destination_t BS_NULL = 0;
+    
+    // We access this only through these wrapper methods, because we're going to
+    // swap out functionality.
+    // Sides are from 1-based node ranks, so start at 2.
+    // Get the item in a B_s array for a side at an offset.
+    destination_t bs_get(int64_t side, int64_t offset) const;
+    // Get the rank of a position among positions pointing to a certain
+    // destination from a side.
+    size_t bs_rank(int64_t side, int64_t offset, destination_t value) const;
+    // Set the whole B_s array for a size. May throw an error if B_s for that
+    // side has already been set (as overwrite is not necessarily possible).
+    void bs_set(int64_t side, vector<destination_t> new_array);
+    // Insert into the B_s array for a side
+    void bs_insert(int64_t side, int64_t offset, destination_t value);
+    
+    
     
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
