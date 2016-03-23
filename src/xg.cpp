@@ -1347,6 +1347,14 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
     }
 }
 
+Edge XG::canonicalize(const Edge& edge) {
+    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
+        return edge;
+    } else {
+        return make_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+    }
+}
+
 Path XG::path(const string& name) const {
     // Extract a whole path by name
     
@@ -2136,6 +2144,211 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // all the threads that come in via earlier edges, and all the previous
     // threads going there that come via this edge.
     return new_visit_offset;
+}
+
+void XG::insert_threads_into_dag(const vector<Path>& t) {
+
+    auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
+        // We have to take this destination vector and store it in whatever B_s
+        // storage we are using.
+        // For now just fill in the DYNAMIC bs_iv and the other things...
+        
+        int64_t node_side = id_to_rank(node_id) * 2 + is_reverse;
+        
+        // Where does the block we want to insert in the B_s arrays start?
+        size_t bs_insert_index = bs_iv->select(node_side - 2, BS_SEPARATOR) + 1;
+        
+        for(auto destination : destinations) {
+            // Blit everything into the B_s array
+            bs_iv->insert(bs_insert_index, destination);
+            bs_insert_index++;
+        }
+        
+        // Set the number of total visits to this side.
+        h_iv[(node_rank_as_entity(node_id) - 1) * 2 + is_reverse] = destinations.size();
+    };
+    
+    auto emit_edge_traversal = [&](int64_t node_id, bool from_start, int64_t next_node_id, bool to_end) {
+        // We have to store the fact that we traversed this edge in the specified direction in our succinct storage. 
+        
+        // Find the edge as it actually appears in the graph.
+        // TODO: amke sure it exists.
+        Edge canonical = canonicalize(make_edge(node_id, from_start, next_node_id, to_end));
+        
+        // We're departing along this edge, so our orientation cares about
+        // whether we have to take the edge forward or backward when departing.
+        int64_t edge_orientation_number = (edge_rank_as_entity(canonical) - 1) * 2 +
+            depart_by_reverse(canonical, node_id, from_start);
+                
+#ifdef VERBOSE_DEBUG
+        cerr << "We need to add 1 to the traversals of oriented edge " << edge_orientation_number << endl;
+#endif
+                
+        // Increment the count for the edge
+        h_iv[edge_orientation_number]++; 
+    };
+    
+    auto emit_thread_start = [&](int64_t node_id, bool is_reverse) {
+        // Record that an (orientation of) a thread starts at this node in this
+        // orientation. We have to update our thread start succinct data
+        // structure.
+        
+        int64_t node_side = id_to_rank(node_id) * 2 + is_reverse;
+        
+        // Say we start one more thread on this side.
+        ts_iv[node_side]++;
+        
+    };
+
+    // We want to go through and insert running forward through the DAG, and
+    // then again backward through the DAG.
+    auto insert_in_direction = [&](bool insert_reverse) {
+
+        // First sort out the thread numbers by the node they start at.
+        // We know all the threads go the same direction through each node.
+        map<int64_t, list<size_t>> thread_numbers_by_start_node;
+        
+        for(size_t i = 0; i < t.size(); i++) {
+            if(t[i].mapping_size() > 0) {
+                // Do we start with the first or last mapping in the thread?
+                size_t thread_start = insert_reverse ? t[i].mapping_size() - 1 : 0;
+                auto& mapping_position = t[i].mapping(thread_start).position();
+                thread_numbers_by_start_node[mapping_position.node_id()].push_back(i);
+                
+                // Say a thread starts here, going in the orientation determined
+                // by how the node is visited and how we're traversing the path.
+                emit_thread_start(mapping_position.node_id(), mapping_position.is_reverse() != insert_reverse);
+            }
+        }
+        
+        // We have this message-passing architecture, where we send groups of
+        // threads along edges to destination nodes. This records, by edge rank of
+        // the traversed edge (with 0 meaning starting there), the group of threads
+        // coming in along that edge, and the offset in each thread that the visit
+        // to the node is at. These are messages passed along the edge from the
+        // earlier node to the later node (since we know threads follow a DAG).
+        map<size_t, list<pair<size_t, size_t>>> edge_to_ordered_threads;
+        
+        for(size_t node_rank = (insert_reverse ? max_node_rank() : 1);
+            node_rank != (insert_reverse ? 0 : max_node_rank() + 1);
+            node_rank += (insert_reverse ? -1 : 1)) {
+            // Then we start at the first node in the DAG
+            
+            int64_t node_id = rank_to_id(node_rank);
+            
+            // We order the thread visits starting there, and then all the threads
+            // coming in from other places, ordered by edge traversed
+            list<pair<size_t, size_t>> threads_visiting;
+            
+            if(thread_numbers_by_start_node.count(node_id)) {
+                // Grab the threads starting here
+                for(size_t thread_number : thread_numbers_by_start_node.at(node_id)) {
+                    // For every thread that starts here, say it visits here with mapping 0
+                    threads_visiting.emplace_back(thread_number, 0);
+                }
+                thread_numbers_by_start_node.erase(node_id);
+            }
+            
+            
+            for(Edge& in_edge : edges_of(node_id)) {
+                // Look at all the edges on the node. Messages will only exist on
+                // the incoming ones.
+                auto edge_rank = edge_rank_as_entity(in_edge);
+                if(edge_to_ordered_threads.count(edge_rank)) {
+                    // We have messages coming along this edge on our start
+                    
+                    // These threads come in next. Splice them in because they
+                    // already have the right mapping indices.
+                    threads_visiting.splice(threads_visiting.end(), edge_to_ordered_threads[edge_rank]);
+                    edge_to_ordered_threads.erase(edge_rank);
+                }
+            }
+            
+            if(threads_visiting.empty()) {
+                // Nothing visits here, so there's no cool succinct data structures
+                // to generate.
+                continue;
+            }
+            
+            
+            // Some threads visit here! Determine our orientation from the first
+            // and assume it applies to all threads visiting us.
+            auto& first_visit = threads_visiting.front();
+            bool node_is_reverse = t[first_visit.first].mapping(first_visit.second).position().is_reverse();
+            // When we're inserting threads backwards, we need to treat forward
+            // nodes as reverse and visa versa, to leave the correct side.
+            node_is_reverse = node_is_reverse != insert_reverse;
+            
+            // Now we have all the threads coming through this node, and we know
+            // which way they are going.
+
+            // Make a map from outgoing edge rank to the B_s array number (0 for
+            // stop here, 1 reserved as a separator, and 2 through n corresponding
+            // to outgoing edges in order) for this node's outgoing side.
+            map<size_t, size_t> edge_rank_to_local_edge_number;
+            auto outgoing_edges = node_is_reverse ? edges_on_start(node_id) : edges_on_end(node_id);
+            for(size_t i = 0; i < outgoing_edges.size(); i++) {
+                size_t edge_rank = edge_rank_as_entity(outgoing_edges[i]);
+                edge_rank_to_local_edge_number[edge_rank] = i + 2;
+            }
+            
+            // Make a vector we'll fill in with all the B array values (0 for stop,
+            // 2 + edge number for outgoing edge)
+            vector<size_t> destinations;
+            
+            for(auto& visit : threads_visiting) {
+                // Now go through all the path visits, fill in the edge numbers (or 0
+                // for stop) they go to, and stick visits to the next mappings in the
+                // correct message lists.
+                if(insert_reverse ? (visit.second != 0) : (visit.second + 1 < t[visit.first].mapping_size())) {
+                    // This visit continues on from here
+                    
+                    // Make a visit to the next mapping on the path
+                    auto next_visit = visit;
+                    next_visit.second += insert_reverse ? -1 : 1;
+                    
+                    // Work out what node that is, and what orientation
+                    auto& next_position = t[next_visit.first].mapping(next_visit.second).position();
+                    int64_t next_node_id = next_position.node_id();
+                    bool next_is_reverse = next_position.is_reverse() != insert_reverse;
+                    
+                    // Figure out the rank of the edge we need to take to get there
+                    size_t next_edge_rank = edge_rank_as_entity(node_id, node_is_reverse, next_node_id, next_is_reverse);
+                    
+                    // Look up what local edge number that edge gets and say we follow it.
+                    destinations.push_back(edge_rank_to_local_edge_number.at(next_edge_rank));
+                    
+                    // Send the new mapping along the edge after all the other ones
+                    // we've sent along the edge
+                    edge_to_ordered_threads[next_edge_rank].push_back(next_visit);
+                    
+                    // Say we traverse an edge going from this node in this
+                    // orientation to that node in that orientation.
+                    emit_edge_traversal(node_id, node_is_reverse, next_node_id, next_is_reverse);
+                    
+                } else {
+                    // This visit ends here
+                    destinations.push_back(BS_NULL);
+                }
+            }
+            
+            // Emit the destinations array for the node. Store it in whatever
+            // sort of succinct storage we are using...
+            // We need to send along the side (false for left, true for right)
+            emit_destinations(node_id, node_is_reverse, destinations);
+            
+            // We repeat through all nodes until done.
+        }
+    
+        // OK now we have gone through the whole set of everything and inserted
+        // in this direction.
+    };
+    
+    // Actually call the inserts
+    insert_in_direction(false);
+    insert_in_direction(true);
+    
+    
 }
 
 void XG::insert_thread(const Path& t) {

@@ -94,6 +94,9 @@ public:
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
     // Supports the edge articulated in any orientation. Edge must exist.
     size_t edge_rank_as_entity(const Edge& edge) const;
+    // Given an edge which is in the graph in some orientation, return the edge
+    // oriented as it actually appears.
+    Edge canonicalize(const Edge& edge);
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
@@ -167,6 +170,15 @@ public:
     
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
+    // Insert a whole group of threads. Names should be unique or empty (though
+    // they aren't used yet). The indexed graph must be a DAG, at least in the
+    // subset traversed by the threads. (Reversing edges are fine, but the
+    // threads in a node must all run in the same direction.) This uses a
+    // special efficient batch insert algorithm for DAGs that lets us just scan
+    // the graph and generate nodes' B_s arrays independently. This must be
+    // called only once, and no threads can have been inserted previously. Any
+    // threads already in the graph will be discarded.
+    void insert_threads_into_dag(const vector<Path>& t);
     // Read all the threads embedded in the graph.
     list<Path> extract_threads() const;
     // Extract a particular thread by name. Name may not be empty.
