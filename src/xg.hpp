@@ -53,19 +53,28 @@ public:
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
-    void from_stream(istream& in, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
-    void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
+    void from_stream(istream& in, bool validate_graph = false,
+        bool print_graph = false, bool store_threads = false,
+        bool is_sorted_dag = false);
+    void from_graph(Graph& graph, bool validate_graph = false,
+        bool print_graph = false, bool store_threads = false,
+        bool is_sorted_dag = false);
     // Load the graph by calling a function that calls us back with graph chunks.
     // The function passed in here is responsible for looping.
+    // If is_sorted_dag is true and store_threads is true, we store the threads
+    // with an algorithm that only works on topologically sorted DAGs, but which
+    // is faster.
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
-        bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
+        bool validate_graph = false, bool print_graph = false,
+        bool store_threads = false, bool is_sorted_dag = false); 
     void build(map<id_t, string>& node_label,
                map<side_t, set<side_t> >& from_to,
                map<side_t, set<side_t> >& to_from,
                map<string, vector<trav_t> >& path_nodes,
                bool validate_graph,
                bool print_graph,
-               bool store_threads);
+               bool store_threads,
+               bool is_sorted_dag);
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,

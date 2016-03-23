@@ -388,26 +388,28 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     
 }
 
-void XG::from_stream(istream& in, bool validate_graph, bool print_graph, bool store_threads) {
+void XG::from_stream(istream& in, bool validate_graph, bool print_graph,
+    bool store_threads, bool is_sorted_dag) {
 
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // TODO: should I be bandying about function references instead of
         // function objects here?
         stream::for_each(in, handle_chunk);
-    }, validate_graph, print_graph, store_threads);
+    }, validate_graph, print_graph, store_threads, is_sorted_dag);
 }
 
-void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph, bool store_threads) {
+void XG::from_graph(Graph& graph, bool validate_graph, bool print_graph,
+    bool store_threads, bool is_sorted_dag) {
 
     from_callback([&](function<void(Graph&)> handle_chunk) {
         // There's only one chunk in this case.
         handle_chunk(graph);
-    }, validate_graph, print_graph, store_threads);
+    }, validate_graph, print_graph, store_threads, is_sorted_dag);
 
 }
 
 void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks, 
-    bool validate_graph, bool print_graph, bool store_threads) {
+    bool validate_graph, bool print_graph, bool store_threads, bool is_sorted_dag) {
 
     // temporaries for construction
     map<id_t, string> node_label;
@@ -481,7 +483,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
                    path.end());
     }
 
-    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph, store_threads);
+    build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph,
+        store_threads, is_sorted_dag);
     
 }
 
@@ -491,7 +494,8 @@ void XG::build(map<id_t, string>& node_label,
                map<string, vector<trav_t> >& path_nodes,
                bool validate_graph,
                bool print_graph,
-               bool store_threads) {
+               bool store_threads,
+               bool is_sorted_dag) {
 
     size_t entity_count = node_count + edge_count;
 #ifdef VERBOSE_DEBUG
@@ -732,6 +736,10 @@ void XG::build(map<id_t, string>& node_label,
         cerr << "storing threads" << endl;
 #endif
     
+        // If we're a sorted DAG we'll batch up the paths and use a batch
+        // insert.
+        vector<Path> batch;
+    
         // Just store all the paths that are all perfect mappings as threads.
         // We end up converting *back* into Path objects.
         for (auto& pathpair : path_nodes) {
@@ -771,10 +779,20 @@ void XG::build(map<id_t, string>& node_label,
             }
             
             if(all_perfect) {
-                // We actually want to insert this path as a thread
-                insert_thread(reconstructed);
+                if(is_sorted_dag) {
+                    // Save for a batch insert
+                    batch.push_back(reconstructed);
+                } else {
+                    // We actually want to insert this path as a thread
+                    insert_thread(reconstructed);
+                }
             }
             
+        }
+        
+        if(is_sorted_dag) {
+            // Do the batch insert
+            insert_threads_into_dag(batch);
         }
     }
     

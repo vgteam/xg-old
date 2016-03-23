@@ -33,6 +33,7 @@ void help_main(char** argv) {
          << "    -p, --path TARGET    gets the region of the graph @ TARGET (chr:start-end)" << endl
          << "    -x, --extract-threads      extract succinct threads as paths" << endl
          << "    -r, --store-threads  store perfect match paths as succinct threads" << endl
+         << "    -d, --is-sorted-dag  graph is a sorted dag; use fast thread insert" << endl
          << "    -R, --report FILE    save an HTML space usage report to FILE when serializing" << endl
          << "    -D, --debug          show debugging output" << endl
          << "    -T, --text-output    write text instead of vg protobuf" << endl
@@ -66,6 +67,7 @@ int main(int argc, char** argv) {
     bool validate_graph = false;
     bool extract_threads = false;
     bool store_threads = false;
+    bool is_sorted_dag = false;
     string report_name;
     
     int c;
@@ -91,6 +93,7 @@ int main(int argc, char** argv) {
                 {"path", required_argument, 0, 'p'},
                 {"extract-threads", no_argument, 0, 'x'},
                 {"store-threads", no_argument, 0, 'r'},
+                {"is-sorted-dag", no_argument, 0, 'd'},
                 {"report", required_argument, 0, 'R'},
                 {"debug", no_argument, 0, 'D'},
                 {"text-output", no_argument, 0, 'T'},
@@ -99,7 +102,7 @@ int main(int argc, char** argv) {
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxrTO:S:E:VR:P:F:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxrdTO:S:E:VR:P:F:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -135,6 +138,10 @@ int main(int argc, char** argv) {
             
         case 'r':
             store_threads = true;
+            break;
+            
+        case 'd':
+            is_sorted_dag = true;
             break;
 
         case 'i':
@@ -212,12 +219,12 @@ int main(int argc, char** argv) {
     if (in_name.empty()) assert(!vg_name.empty());
     if (vg_name == "-") {
         graph = new XG;
-        graph->from_stream(std::cin, validate_graph, print_graph, store_threads);
+        graph->from_stream(std::cin, validate_graph, print_graph, store_threads, is_sorted_dag);
     } else if (vg_name.size()) {
         ifstream in;
         in.open(vg_name.c_str());
         graph = new XG;
-        graph->from_stream(in, validate_graph, print_graph, store_threads);
+        graph->from_stream(in, validate_graph, print_graph, store_threads, is_sorted_dag);
     }
 
     if (in_name.size()) {
