@@ -177,7 +177,7 @@ public:
     using dynamic_int_vector = dyn::wt_str;
     
     // Actually we keep them in instances of this cool wavelet tree.
-    using rank_select_int_vector = sdsl::wt_huff<>;
+    using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
     
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
@@ -344,6 +344,10 @@ private:
     // Currently the separator isn't used; we just place these by side.
     vector<rank_select_int_vector> bs_arrays;
     
+    // We cram them all into one array for efficient query and storage,
+    // separated by BS_SEPARATOR.
+    rank_select_int_vector bs_single_array;
+    
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
     using destination_t = size_t;
@@ -365,6 +369,10 @@ private:
     void bs_set(int64_t side, vector<destination_t> new_array);
     // Insert into the B_s array for a side
     void bs_insert(int64_t side, int64_t offset, destination_t value);
+    
+    // Prepare the B_s array data structures for query. After you call this, you
+    // shouldn't call bs_set or bs_insert.
+    void bs_bake();
     
     
     

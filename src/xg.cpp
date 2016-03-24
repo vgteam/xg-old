@@ -155,14 +155,9 @@ void XG::load(istream& in) {
     h_iv.load(in);
     ts_iv.load(in);
 
-    // Load all the B_s arrays for sides.    
-    // Max node rank is inclusive and we need past-the-end
-    size_t side_count = (max_node_rank() + 1) * 2;
-    bs_arrays.resize(side_count - 2);
-    for (size_t i = 0; i < side_count - 2; ++i) {
-        bs_arrays.at(i).load(in);
-    }
-    
+    // Load all the B_s arrays for sides.
+    // Baking required before serialization.
+    bs_single_array.load(in);
 }
 
 void XGPath::load(istream& in) {
@@ -389,11 +384,8 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     size_t threads_written = 0;
     threads_written += h_iv.serialize(out, threads_child, "thread_usage_count");
     threads_written += ts_iv.serialize(out, threads_child, "thread_start_count");
-    
-    for(size_t i = 0; i < bs_arrays.size(); i++) {
-        threads_written += bs_arrays.at(i).serialize(out, threads_child, "bs_arrays[" + to_string(i) + "]");
-    }
-    
+    // Stick all the B_s arrays in together. Must be baked.
+    threads_written += bs_single_array.serialize(out, threads_child, "bs_single_array");
     
     sdsl::structure_tree::add_size(threads_child, threads_written);
     written += threads_written;
@@ -2363,6 +2355,9 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
     insert_in_direction(false);
     insert_in_direction(true);
     
+    // Actually build the B_s arrays for rank and select.
+    bs_bake();
+    
     
 }
 
@@ -2665,11 +2660,23 @@ list<Path> XG::extract_threads() const {
 }
 
 XG::destination_t XG::bs_get(int64_t side, int64_t offset) const {
-    return bs_arrays.at(side - 2)[offset];
+    if(!bs_arrays.empty()) {
+        // We still have per-side arrays
+        return bs_arrays.at(side)[offset];
+    } else {
+        // We have a single big array
+        return bs_single_array[bs_single_array.select(side, BS_SEPARATOR) + 1 + offset];
+    }
+    
 }
 
 size_t XG::bs_rank(int64_t side, int64_t offset, destination_t value) const {
-    return bs_arrays.at(side - 2).rank(offset, value);
+    if(!bs_arrays.empty()) {
+        return bs_arrays.at(side - 2).rank(offset, value);
+    } else {
+        size_t range_start = bs_single_array.select(side, BS_SEPARATOR) + 1;
+        return bs_single_array.rank(range_start + offset, value) - bs_single_array.rank(range_start, value);
+    }
 }
 
 void XG::bs_set(int64_t side, vector<destination_t> new_array) {
@@ -2701,6 +2708,29 @@ void XG::bs_insert(int64_t side, int64_t offset, destination_t value) {
     
     // Rebuild the array
     construct_im(array_to_expand, bytes, 1);
+}
+
+void XG::bs_bake() {
+    // Change to a single array
+    string all_bs_arrays;
+    
+    // Start with a separator for sides 0 and 1.
+    // We don't start at run 0 because we can't select(0, BS_SEPARATOR).
+    all_bs_arrays.push_back(BS_SEPARATOR);
+    
+    for(auto& bs_array : bs_arrays) {
+        // Stick everything together with a separator at the front of every
+        // range.
+        all_bs_arrays.push_back(BS_SEPARATOR);
+        for(size_t i = 0; i < bs_array.size(); i++) {
+            all_bs_arrays.push_back(bs_array[i]);
+        }
+    }
+    
+    // Rebuild based on the entire concatenated string.
+    construct_im(bs_single_array, all_bs_arrays, 1);
+    
+    bs_arrays.clear();
 }
 
 size_t XG::count_matches(const Path& t) const {
