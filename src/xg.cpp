@@ -2393,7 +2393,7 @@ void XG::insert_thread(const Path& t) {
                 cerr << "End the thread." << endl;
 #endif
                 // Stick a new entry in the B array at the place where it belongs.
-                bs_iv->insert(bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, BS_NULL);
+                bs_insert(node_side, visit_offset, BS_NULL);
             } else {
                 // This is not the last visit. Send us off to the next place, and update the count on the edge.
                 
@@ -2470,22 +2470,9 @@ void XG::insert_thread(const Path& t) {
                 // Make a nice reference to the edge we're taking in its real orientation.
                 auto& edge_taken = edges_out[edge_taken_index];
             
-                // Where do we insert the B value?
-                int64_t target_entry = bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset;
-                
-                // Where is the first spot not in our range at the moment?
-                int64_t next_range_start = (node_side - 2 == bs_iv->rank(bs_iv->size(), BS_SEPARATOR) - 1 ? bs_iv->size() : bs_iv->select(node_side - 2 + 1, BS_SEPARATOR));
-    
-#ifdef VERBOSE_DEBUG
-                cerr << "Will go in entry " << target_entry << " of " << bs_iv->size() << endl;
-#endif
-
-                // Make sure our new entry won't end up owned by the next side over.
-                assert(target_entry <= next_range_start);
-
                 // Stick a new entry in the B array at the place where it belongs.
                 // Make sure to +2 to leave room in the number space for the separators and null destinations.
-                bs_iv->insert(bs_iv->select(node_side - 2, BS_SEPARATOR) + 1 + visit_offset, edge_taken_index + 2);
+                bs_insert(node_side, visit_offset, edge_taken_index + 2);
                 
                 // Update the usage count for the edge going form here to the next node
                 // Make sure that edge storage direction is correct.
@@ -2519,11 +2506,6 @@ void XG::insert_thread(const Path& t) {
             
 #ifdef VERBOSE_DEBUG
             
-            for(size_t j = 0; j < bs_iv->size(); j++) {
-                cerr << bs_iv->at(j) << "; ";
-            }
-            cerr << endl;
-
             cerr << "Node " << node_id << " orientation " << node_is_reverse <<
                 " has rank " <<
                 ((node_rank_as_entity(node_id) - 1) * 2 + node_is_reverse) <<
@@ -2604,9 +2586,6 @@ list<Path> XG::extract_threads() const {
             int64_t side = i;
             int64_t offset = j;
             
-            // We need to un-const this int vector because DYNAMIC has no consts anywhere.
-            dynamic_int_vector& nonconst_bs_iv = *bs_iv;
-            
             while(true) {
                 // Unpack the side into a node traversal
                 Mapping m;
@@ -2619,20 +2598,11 @@ list<Path> XG::extract_threads() const {
 #ifdef VERBOSE_DEBUG
                 cerr << "At side " << side << endl;
                 
-                cerr << "Want B group " << side - 2 << " of " << nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) << " at " << nonconst_bs_iv.size() << endl;
 #endif
                 // Work out where we go
                 
                 // What edge of the available edges do we take?
-                int64_t edge_index = nonconst_bs_iv.at(nonconst_bs_iv.select(side - 2, BS_SEPARATOR) + 1 + offset);
-                
-#ifdef VERBOSE_DEBUG
-                cerr << "Group starts at " << nonconst_bs_iv.select(side - 2, BS_SEPARATOR) << endl;
-                int64_t outbound_count = ((side - 2 == nonconst_bs_iv.rank(nonconst_bs_iv.size(), BS_SEPARATOR) - 1) ? nonconst_bs_iv.size() : nonconst_bs_iv.select(side - 2 + 1, BS_SEPARATOR)) - nonconst_bs_iv.select(side - 2, BS_SEPARATOR);
-                cerr << "Local B entry " << offset << " of " << outbound_count << endl;
-                assert(offset < outbound_count);
-#endif
-                
+                int64_t edge_index = bs_get(side, offset);
                 
                 // If we find a separator, we're very broken.
                 assert(edge_index != BS_SEPARATOR);
