@@ -173,14 +173,9 @@ public:
 
     // gPBWT interface
     
-    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
-    using dynamic_int_vector = dyn::wt_str;
-    
-    // Actually we keep them in instances of this cool wavelet tree.
+    // We keep our strings in instances of this cool wavelet tree.
     using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
     
-    // Insert a thread. Path name must be unique or empty.
-    void insert_thread(const Path& t);
     // Insert a whole group of threads. Names should be unique or empty (though
     // they aren't used yet). The indexed graph must be a DAG, at least in the
     // subset traversed by the threads. (Reversing edges are fine, but the
@@ -336,16 +331,17 @@ private:
     // ts stands for "thread start"
     int_vector<> ts_iv;
     
-    // This holds the concatenated Benedict arrays,  0s noting the null side
-    // (i.e. the thread ends at this node). Instead of holding destination sides,
-    // we actually hold the index of the edge that gets taken to the destination
-    // side, out of all edges we could take leaving the node. We offset all the
-    // values up by 2, to make room for the null sentinel and the separator.
-    // Currently the separator isn't used; we just place these by side.
-    vector<rank_select_int_vector> bs_arrays;
+    // We use this for creating the sub-parts of the uncompressed B_s arrays.
+    // We don't really support rank and select on this.
+    vector<string> bs_arrays;
     
-    // We cram them all into one array for efficient query and storage,
-    // separated by BS_SEPARATOR.
+    // This holds the concatenated Benedict arrays, with BS_SEPARATOR separating
+    // them, and BS_NULL noting the null side (i.e. the thread ends at this
+    // node). Instead of holding destination sides, we actually hold the index
+    // of the edge that gets taken to the destination side, out of all edges we
+    // could take leaving the node. We offset all the values up by 2, to make
+    // room for the null sentinel and the separator. Currently the separator
+    // isn't used; we just place these by side.
     rank_select_int_vector bs_single_array;
     
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
@@ -418,12 +414,6 @@ public:
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse);
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 void to_text(ostream& out, Graph& graph);
-
-// Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name);
-
-// Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
-XG::dynamic_int_vector* deserialize(istream& in);
 
 // Determine if two edges are equivalent (the same or one is the reverse of the other)
 bool edges_equivalent(const Edge& e1, const Edge& e2);
