@@ -47,8 +47,7 @@ public:
                seq_length(0),
                node_count(0),
                edge_count(0),
-               path_count(0),
-               bs_iv(nullptr) { }
+               path_count(0) { }
     ~XG(void);
     XG(istream& in);
     XG(Graph& graph);
@@ -175,7 +174,10 @@ public:
     // gPBWT interface
     
     // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
-    using dynamic_int_vector = dyn::rle_str;
+    using dynamic_int_vector = dyn::wt_str;
+    
+    // Actually we keep them in instances of this cool wavelet tree.
+    using rank_select_int_vector = sdsl::wt_huff<>;
     
     // Insert a thread. Path name must be unique or empty.
     void insert_thread(const Path& t);
@@ -334,16 +336,13 @@ private:
     // ts stands for "thread start"
     int_vector<> ts_iv;
     
-    // This holds the concatenated Benedict arrays. They are separated with 1s,
-    // with 0s noting the null side (i.e. the thread ends at this node). To find
-    // where the range for a side starts, subtract 2 from the side (to get its
-    // 0-based rank among real sides), select that separator position, and add 1
-    // to get to the first B_s array entry (if any) for the side. Instead of
-    // holding destination sides, we actually hold the index of the edge that
-    // gets taken to the destination side, out of all edges we could take
-    // leaving the node. We offset all the values up by 2, to make room for the
-    // null sentinel and the separator.
-    dynamic_int_vector* bs_iv;
+    // This holds the concatenated Benedict arrays,  0s noting the null side
+    // (i.e. the thread ends at this node). Instead of holding destination sides,
+    // we actually hold the index of the edge that gets taken to the destination
+    // side, out of all edges we could take leaving the node. We offset all the
+    // values up by 2, to make room for the null sentinel and the separator.
+    // Currently the separator isn't used; we just place these by side.
+    vector<rank_select_int_vector> bs_arrays;
     
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.

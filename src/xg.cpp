@@ -95,7 +95,6 @@ XG::XG(function<void(function<void(Graph&)>)> get_chunks)
 }
 
 XG::~XG(void) {
-     if (bs_iv != nullptr) delete bs_iv;
 }
 
 void XG::load(istream& in) {
@@ -155,7 +154,15 @@ void XG::load(istream& in) {
     
     h_iv.load(in);
     ts_iv.load(in);
-    bs_iv = deserialize(in);
+
+    // Load all the B_s arrays for sides.    
+    // Max node rank is inclusive and we need past-the-end
+    size_t side_count = (max_node_rank() + 1) * 2;
+    bs_arrays.resize(side_count - 2);
+    for (size_t i = 0; i < side_count - 2; ++i) {
+        bs_arrays.at(i).load(in);
+    }
+    
 }
 
 void XGPath::load(istream& in) {
@@ -382,7 +389,12 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     size_t threads_written = 0;
     threads_written += h_iv.serialize(out, threads_child, "thread_usage_count");
     threads_written += ts_iv.serialize(out, threads_child, "thread_start_count");
-    threads_written += xg::serialize(bs_iv, out, threads_child, "benedict_arrays");
+    
+    for(size_t i = 0; i < bs_arrays.size(); i++) {
+        threads_written += bs_arrays.at(i).serialize(out, threads_child, "bs_arrays[" + to_string(i) + "]");
+    }
+    
+    
     sdsl::structure_tree::add_size(threads_child, threads_written);
     written += threads_written;
 
@@ -527,20 +539,6 @@ void XG::build(map<id_t, string>& node_label,
     util::assign(t_to_end_bv, bit_vector(entity_count));
     util::assign(t_from_start_bv, bit_vector(entity_count));
     
-    // Prepare empty vectors for path indexing
-#ifdef VERBOSE_DEBUG
-    cerr << "creating empty succinct thread store" << endl;
-#endif
-    util::assign(h_iv, int_vector<>(entity_count * 2, 0));
-    util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
-    bs_iv = new dynamic_int_vector;
-    for(int64_t i = 0; i < node_count * 2; i++) {
-        // Add in a separator marking the start of the B_s[] array for each
-        // side. TODO: can we make the compressed representation expose a batch
-        // append API?
-        bs_iv->push_back(BS_SEPARATOR);
-    }
-
     // for each node in the sequence
     // concatenate the labels into the s_iv
 #ifdef VERBOSE_DEBUG
@@ -674,6 +672,16 @@ void XG::build(map<id_t, string>& node_label,
     util::assign(s_cbv, rrr_vector<>(s_bv));
     util::assign(s_cbv_rank, rrr_vector<>::rank_1_type(&s_cbv));
     util::assign(s_cbv_select, rrr_vector<>::select_1_type(&s_cbv));
+
+// Prepare empty vectors for path indexing
+#ifdef VERBOSE_DEBUG
+    cerr << "creating empty succinct thread store" << endl;
+#endif
+    util::assign(h_iv, int_vector<>(entity_count * 2, 0));
+    util::assign(ts_iv, int_vector<>((node_count + 1) * 2, 0));
+    // We have one B_s array for every side, but the first 2 numbers for sides
+    // are unused. But max node rank is inclusive, so it evens out...
+    bs_arrays.resize(max_node_rank() * 2);
 
 #ifdef VERBOSE_DEBUG
     cerr << "storing paths" << endl;
@@ -851,7 +859,7 @@ void XG::build(map<id_t, string>& node_label,
         + size_in_mega_bytes(s_cbv)
         + size_in_mega_bytes(h_iv)
         + size_in_mega_bytes(ts_iv)
-        // TODO: add in size of the dynamic bs_iv
+        // TODO: add in size of the bs_arrays in a loop
         + paths_mb_size
         ) << endl;
 
@@ -2165,7 +2173,6 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
         // We have to take this destination vector and store it in whatever B_s
         // storage we are using.
-        // For now just fill in the DYNAMIC bs_iv and the other things...
         
         int64_t node_side = id_to_rank(node_id) * 2 + is_reverse;
         
@@ -2658,43 +2665,42 @@ list<Path> XG::extract_threads() const {
 }
 
 XG::destination_t XG::bs_get(int64_t side, int64_t offset) const {
-    // Start after the separator for the side and go offset from there.
-    return bs_iv->at(bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset);
+    return bs_arrays.at(side - 2)[offset];
 }
 
 size_t XG::bs_rank(int64_t side, int64_t offset, destination_t value) const {
-    // Where does the B_s[] range for the side we're interested in start?
-    int64_t bs_start = bs_iv->select(side - 2, BS_SEPARATOR) + 1;
-    
-    // Get the rank difference between the start and the start plus the offset.
-    return bs_iv->rank(bs_start + offset, value) - bs_iv->rank(bs_start, value);
+    return bs_arrays.at(side - 2).rank(offset, value);
 }
 
 void XG::bs_set(int64_t side, vector<destination_t> new_array) {
-    // Where does the block we want start?
-    size_t this_range_start = bs_iv->select(side - 2, BS_SEPARATOR) + 1;
+    // We always know bs_arrays will be big enough.
     
-    // Where is the first spot not in the range for this side?
-    int64_t this_range_past_end = (side - 2 == bs_iv->rank(bs_iv->size(), BS_SEPARATOR) - 1 ?
-        bs_iv->size() : bs_iv->select(side - 2 + 1, BS_SEPARATOR));
+    // Turn the new array into a string of bytes.
+    // TODO: none of the destinations can be 255 or greater!
+    string bytes(new_array.size(), 0);
+    copy(new_array.begin(), new_array.end(), bytes.begin());
     
-    if(this_range_start != this_range_past_end) {
-        // We can't overwrite! Just explode.
-        throw runtime_error("B_s overwrite not supported");
-    }
-    
-    size_t bs_insert_index = this_range_start;
-    
-    for(auto destination : new_array) {
-        // Blit everything into the B_s array
-        bs_iv->insert(bs_insert_index, destination);
-        bs_insert_index++;
-    }
+    // Build a wavelet tree from the string, with 1 byte characters
+    construct_im(bs_arrays.at(side - 2), bytes, 1);
 }
 
 void XG::bs_insert(int64_t side, int64_t offset, destination_t value) {
-    // Find the place to put it in the correct side's B_s and insert
-    bs_iv->insert(bs_iv->select(side - 2, BS_SEPARATOR) + 1 + offset, value);
+    // We can't do this efficiently with this implementation
+    // But we cna do it inefficiently!
+    
+    auto& array_to_expand = bs_arrays.at(side - 2);
+    
+    // Convert back to a string
+    string bytes(array_to_expand.size(), 0);
+    for(size_t i = 0; i < array_to_expand.size(); i++) {
+        bytes[i] = array_to_expand[i];
+    }
+    
+    // Stick one copy of the new entry in at the right position.
+    bytes.insert(offset, 1, value);
+    
+    // Rebuild the array
+    construct_im(array_to_expand, bytes, 1);
 }
 
 size_t XG::count_matches(const Path& t) const {
