@@ -2174,7 +2174,7 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
         // We have to store the fact that we traversed this edge in the specified direction in our succinct storage. 
         
         // Find the edge as it actually appears in the graph.
-        // TODO: amke sure it exists.
+        // TODO: make sure it exists.
         Edge canonical = canonicalize(make_edge(node_id, from_start, next_node_id, to_end));
         
         // We're departing along this edge, so our orientation cares about
@@ -2237,6 +2237,10 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
             // Then we start at the first node in the DAG
             
             int64_t node_id = rank_to_id(node_rank);
+            
+            if(node_id % 10000 == 1) {
+                cerr << "Processing node " << node_id << endl;
+            }
             
             // We order the thread visits starting there, and then all the threads
             // coming in from other places, ordered by edge traversed
@@ -2347,10 +2351,13 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
     };
     
     // Actually call the inserts
+    cerr << "Inserting threads forwards..." << endl;
     insert_in_direction(false);
+    cerr << "Inserting threads backwards..." << endl;
     insert_in_direction(true);
     
     // Actually build the B_s arrays for rank and select.
+    cerr << "Creating final compressed array..." << endl;
     bs_bake();
     
     
@@ -2514,23 +2521,32 @@ void XG::bs_insert(int64_t side, int64_t offset, destination_t value) {
 }
 
 void XG::bs_bake() {
-    // Change to a single array
-    string all_bs_arrays;
+    // First pass: determine required size
+    size_t total_visits = 1;
+    for(auto& bs_array : bs_arrays) {
+        total_visits += 1; // For the separator
+        total_visits += bs_array.size();
+    }
+
+    cerr << "Allocating giant B_s array of " << total_visits << " bytes..." << endl;
+    // Move over to a single array which is big enough to start out with.
+    string all_bs_arrays(total_visits, 0);
+    
+    // Where are we writing to?
+    size_t pos = 0;
     
     // Start with a separator for sides 0 and 1.
     // We don't start at run 0 because we can't select(0, BS_SEPARATOR).
-    all_bs_arrays.push_back(BS_SEPARATOR);
+    all_bs_arrays[pos++] = BS_SEPARATOR;
     
-#ifdef VERBOSE_DEBUG
     cerr << "Baking " << bs_arrays.size() << " sides' arrays..." << endl;
-#endif
     
     for(auto& bs_array : bs_arrays) {
         // Stick everything together with a separator at the front of every
         // range.
-        all_bs_arrays.push_back(BS_SEPARATOR);
+        all_bs_arrays[pos++] = BS_SEPARATOR;
         for(size_t i = 0; i < bs_array.size(); i++) {
-            all_bs_arrays.push_back(bs_array[i]);
+            all_bs_arrays[pos++] = bs_array[i];
         }
         bs_array.clear();
     }
