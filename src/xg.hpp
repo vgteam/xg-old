@@ -32,6 +32,8 @@ public:
 
 class XGPath;
 typedef pair<int64_t, bool> Side;
+Side id_to_side(int64_t id);
+int64_t side_to_id(const Side& side);
 
 class XG {
 public:
@@ -54,8 +56,8 @@ public:
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
         bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
     void build(map<int64_t, string>& node_label,
-               pair_hash_map<Side, pair_hash_set<Side> >& from_to,
-               pair_hash_map<Side, pair_hash_set<Side> >& to_from,
+               map<int64_t, set<int64_t> >& from_to,
+               map<int64_t, set<int64_t> >& to_from,
                map<string, map<int, Mapping> >& path_nodes,
                bool validate_graph,
                bool print_graph,
