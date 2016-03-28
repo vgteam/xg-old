@@ -430,14 +430,22 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
             cerr << endl;
 #endif
 
-            std::sort(path.begin(), path.end(),
-                      [](const Mapping& m1, const Mapping& m2) { return m1.rank() < m2.rank(); });
-            std::unique(path.begin(), path.end(),
-                        [](const Mapping& m1, const Mapping& m2) { return m1.rank() == m2.rank(); });
-
         }
     };
-    
+
+    // sort the paths using mapping rank
+    // and remove duplicates
+    for (auto& p : path_nodes) {
+        vector<Mapping>& path = path_nodes[p.first];
+        std::sort(path.begin(), path.end(),
+                  [](const Mapping& m1, const Mapping& m2) { return m1.rank() < m2.rank(); });
+        path.erase(std::unique(path.begin(), path.end(),
+                               [](const Mapping& m1, const Mapping& m2) {
+                                   return m1.rank() == m2.rank();
+                               }),
+                   path.end());
+    }
+
     // Get all the chunks via the callback, and have them called back to us.
     // The other end handles figuring out how much to loop.
     get_chunks(lambda);

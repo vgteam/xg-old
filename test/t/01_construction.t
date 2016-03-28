@@ -25,4 +25,4 @@ rm c.idx
 is $(xg -Vrv data/cyclic_path.vg 2>&1 | grep ok | wc -l) 1 "a graph with a path cycle validates"
 
 is $(xg -Vrv data/self_loop_paths.vg 2>&1 | grep ok | wc -l) 1 "a small graph with all self loops validates"
-is $(xg -Vrv data/b.vg 2>&1 | grep ok | wc -l) 1 "a large graph with doubly-reversing edges validates"
+is $(xg -Vrv data/b_no_path.vg 2>&1 | grep ok | wc -l) 1 "a large graph with doubly-reversing edges and no paths validates"
