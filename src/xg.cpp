@@ -741,44 +741,21 @@ void XG::build(map<id_t, string>& node_label,
     
         // If we're a sorted DAG we'll batch up the paths and use a batch
         // insert.
-        vector<Path> batch;
+        vector<thread_t> batch;
     
         // Just store all the paths that are all perfect mappings as threads.
-        // We end up converting *back* into Path objects.
+        // We end up converting *back* into thread_t objects.
         for (auto& pathpair : path_nodes) {
-            Path reconstructed;
-            
-            // Grab the name
-            reconstructed.set_name(pathpair.first);
+            thread_t reconstructed;
             
             bool all_perfect = true;
             
             // Grab the Mappings, which are now sorted by rank
             for (auto& m : pathpair.second) {
-                Mapping* mapping = reconstructed.add_mapping();
-                mapping->mutable_position()->set_node_id(trav_id(m));
-                mapping->mutable_position()->set_is_reverse(trav_is_rev(m));
-                mapping->set_rank(trav_rank(m));
-                
-                // Make sure the mapping is perfect
-                // TODO: handle offsets
-                if(mapping->edit_size() > 1) {
-                    // Not a perfect mapping
-                    all_perfect = false;
-                    break;
-                } else if(mapping->edit_size() == 0) {
-                    // Is a perfect mapping
-                    continue;
-                } else {
-                    // We have exactly one edit. Is it perfect?
-                    auto edit = mapping->edit(0);
-                    
-                    if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
-                        // The edit calls for actual editing
-                        all_perfect = false;
-                        break;
-                    }
-                }
+                // Convert the mapping to a ThreadMapping
+                // trav_ts are already rank sorted and deduplicated.
+                ThreadMapping mapping = {trav_id(m), trav_is_rev(m)};
+                reconstructed.push_back(mapping);
             }
             
             if(all_perfect && is_sorted_dag) {
@@ -1016,17 +993,17 @@ void XG::build(map<id_t, string>& node_label,
             // And how many shoukd we have inserted?
             size_t threads_expected = 0;
             
-            for(auto path : extract_threads()) {
+            for(auto thread : extract_threads()) {
 #ifdef VERBOSE_DEBUG
-                cerr << "Path: ";
-                for(size_t i = 0; i < path.mapping_size(); i++) {
-                    Mapping mapping = path.mapping(i);
-                    cerr << mapping.position().node_id() * 2 + mapping.position().is_reverse() << "; ";
+                cerr << "Thread: ";
+                for(size_t i = 0; i < thread.size(); i++) {
+                    ThreadMapping mapping = thread[i];
+                    cerr << mapping.node_id * 2 + mapping.is_reverse << "; ";
                 }
                 cerr << endl;
 #endif
                 // Make sure we can search all the threads we find present in the index
-                assert(count_matches(path) > 0);
+                assert(count_matches(thread) > 0);
                 
                 threads_found++;
             }
@@ -2155,7 +2132,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
-void XG::insert_threads_into_dag(const vector<Path>& t) {
+void XG::insert_threads_into_dag(const vector<thread_t>& t) {
 
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
         // We have to take this destination vector and store it in whatever B_s
@@ -2211,15 +2188,15 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
         map<int64_t, list<size_t>> thread_numbers_by_start_node;
         
         for(size_t i = 0; i < t.size(); i++) {
-            if(t[i].mapping_size() > 0) {
+            if(t[i].size() > 0) {
                 // Do we start with the first or last mapping in the thread?
-                size_t thread_start = insert_reverse ? t[i].mapping_size() - 1 : 0;
-                auto& mapping_position = t[i].mapping(thread_start).position();
-                thread_numbers_by_start_node[mapping_position.node_id()].push_back(i);
+                size_t thread_start = insert_reverse ? t[i].size() - 1 : 0;
+                auto& mapping = t[i][thread_start];
+                thread_numbers_by_start_node[mapping.node_id].push_back(i);
                 
                 // Say a thread starts here, going in the orientation determined
                 // by how the node is visited and how we're traversing the path.
-                emit_thread_start(mapping_position.node_id(), mapping_position.is_reverse() != insert_reverse);
+                emit_thread_start(mapping.node_id, mapping.is_reverse != insert_reverse);
             }
         }
         
@@ -2280,7 +2257,7 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
             // Some threads visit here! Determine our orientation from the first
             // and assume it applies to all threads visiting us.
             auto& first_visit = threads_visiting.front();
-            bool node_is_reverse = t[first_visit.first].mapping(first_visit.second).position().is_reverse();
+            bool node_is_reverse = t[first_visit.first][first_visit.second].is_reverse;
             // When we're inserting threads backwards, we need to treat forward
             // nodes as reverse and visa versa, to leave the correct side.
             node_is_reverse = node_is_reverse != insert_reverse;
@@ -2306,7 +2283,7 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
                 // Now go through all the path visits, fill in the edge numbers (or 0
                 // for stop) they go to, and stick visits to the next mappings in the
                 // correct message lists.
-                if(insert_reverse ? (visit.second != 0) : (visit.second + 1 < t[visit.first].mapping_size())) {
+                if(insert_reverse ? (visit.second != 0) : (visit.second + 1 < t[visit.first].size())) {
                     // This visit continues on from here
                     
                     // Make a visit to the next mapping on the path
@@ -2314,9 +2291,9 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
                     next_visit.second += insert_reverse ? -1 : 1;
                     
                     // Work out what node that is, and what orientation
-                    auto& next_position = t[next_visit.first].mapping(next_visit.second).position();
-                    int64_t next_node_id = next_position.node_id();
-                    bool next_is_reverse = next_position.is_reverse() != insert_reverse;
+                    auto& next_mapping = t[next_visit.first][next_visit.second];
+                    int64_t next_node_id = next_mapping.node_id;
+                    bool next_is_reverse = next_mapping.is_reverse != insert_reverse;
                     
                     // Figure out the rank of the edge we need to take to get there
                     size_t next_edge_rank = edge_rank_as_entity(node_id, node_is_reverse, next_node_id, next_is_reverse);
@@ -2363,10 +2340,10 @@ void XG::insert_threads_into_dag(const vector<Path>& t) {
     
 }
 
-list<Path> XG::extract_threads() const {
+auto XG::extract_threads() const -> list<thread_t> {
 
     // Fill in a lsut of paths found
-    list<Path> found;
+    list<thread_t> found;
 
 #ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
@@ -2392,21 +2369,20 @@ list<Path> XG::extract_threads() const {
             cerr << "Extracting thread " << j << endl;
 #endif
             
-            // make a new path
-            Path path;
+            // make a new thread
+            thread_t path;
             
             // Start the side at i and the offset at j
             int64_t side = i;
             int64_t offset = j;
             
             while(true) {
-                // Unpack the side into a node traversal
-                Mapping m;
-                m.mutable_position()->set_node_id(rank_to_id(side / 2));
-                m.mutable_position()->set_is_reverse(side % 2);
                 
-                // Add the mapping to the path
-                *path.add_mapping() = m;
+                // Unpack the side into a node traversal
+                ThreadMapping m = {rank_to_id(side / 2), (bool) (side % 2)};
+                
+                // Add the mapping to the thread
+                path.push_back(m);
                 
 #ifdef VERBOSE_DEBUG
                 cerr << "At side " << side << endl;
@@ -2565,22 +2541,36 @@ void XG::bs_bake() {
     bs_arrays.clear();
 }
 
-size_t XG::count_matches(const Path& t) const {
+size_t XG::count_matches(const thread_t& t) const {
     // This is just a really simple wrapper that does a single extend
     ThreadSearchState state;
     extend_search(state, t);
     return state.count();
 }
 
-void XG::extend_search(ThreadSearchState& state, const Path& t) const {
+size_t XG::count_matches(const Path& t) const {
+    // We assume the path is a thread and convert.
+    thread_t thread;
+    for(size_t i = 0; i < t.mapping_size(); i++) {
+        // Convert the mapping
+        ThreadMapping m = {t.mapping(i).position().node_id(), t.mapping(i).position().is_reverse()};
+        
+        thread.push_back(m);
+    }
+    
+    // Count matches to the converted thread
+    return count_matches(thread);
+}
+
+void XG::extend_search(ThreadSearchState& state, const thread_t& t) const {
     
 #ifdef VERBOSE_DEBUG
     cerr << "Looking for path: ";
-    for(int64_t i = 0; i < t.mapping_size(); i++) {
+    for(int64_t i = 0; i < t.size(); i++) {
         // For each item in the path
-        const Mapping& mapping = t.mapping(i);
-        int64_t next_id = mapping.position().node_id();
-        bool next_is_reverse = mapping.position().is_reverse();
+        const ThreadMapping& mapping = t[i];
+        int64_t next_id = mapping.node_id;
+        bool next_is_reverse = mapping.is_reverse;
         int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
         cerr << next_side << "; ";
     }
@@ -2588,9 +2578,9 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
 #endif
     
     
-    for(int64_t i = 0; i < t.mapping_size(); i++) {
+    for(int64_t i = 0; i < t.size(); i++) {
         // For each item in the path
-        const Mapping& mapping = t.mapping(i);
+        const ThreadMapping& mapping = t[i];
         
         if(state.is_empty()) {
             // Don't bother trying to extend empty things.
@@ -2603,8 +2593,8 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
         }
         
         // TODO: make this mapping to side thing a function
-        int64_t next_id = mapping.position().node_id();
-        bool next_is_reverse = mapping.position().is_reverse();
+        int64_t next_id = mapping.node_id;
+        bool next_is_reverse = mapping.is_reverse;
         int64_t next_side = id_to_rank(next_id) * 2 + next_is_reverse;
         
 #ifdef VERBOSE_DEBUG

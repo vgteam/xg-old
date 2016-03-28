@@ -176,6 +176,16 @@ public:
     // We keep our strings in instances of this cool wavelet tree.
     using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
     
+    // We define a thread visit that's much smaller than a Protobuf Mapping.
+    struct ThreadMapping {
+        int64_t node_id;
+        bool is_reverse;
+    };
+    
+    // We define a thread as just a vector of these things, instead of a bulky
+    // Path.
+    using thread_t = vector<ThreadMapping>;
+    
     // Insert a whole group of threads. Names should be unique or empty (though
     // they aren't used yet). The indexed graph must be a DAG, at least in the
     // subset traversed by the threads. (Reversing edges are fine, but the
@@ -185,13 +195,14 @@ public:
     // called only once, and no threads can have been inserted previously.
     // Otherwise the gPBWT data structures will be left in an inconsistent
     // state.
-    void insert_threads_into_dag(const vector<Path>& t);
+    void insert_threads_into_dag(const vector<thread_t>& t);
     // Read all the threads embedded in the graph.
-    list<Path> extract_threads() const;
+    list<thread_t> extract_threads() const;
     // Extract a particular thread by name. Name may not be empty.
     // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
-    Path extract_thread(const string& name) const;
+    thread_t extract_thread(const string& name) const;
     // Count matches to a subthread among embedded threads
+    size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
     
     /**
@@ -221,7 +232,7 @@ public:
     };
     
     // Extend a search with the given section of a thread.
-    void extend_search(ThreadSearchState& state, const Path& t) const;
+    void extend_search(ThreadSearchState& state, const thread_t& t) const;
 
     
     char start_marker;

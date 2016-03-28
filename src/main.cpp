@@ -354,7 +354,19 @@ int main(int argc, char** argv) {
         
     
         size_t thread_number = 0;
-        for(Path& path : graph->extract_threads()) {
+        for(XG::thread_t& thread : graph->extract_threads()) {
+            // Convert to a Path
+            Path path;
+            for(XG::ThreadMapping& m : thread) {
+                // Convert all the mappings
+                Mapping mapping;
+                mapping.mutable_position()->set_node_id(m.node_id);
+                mapping.mutable_position()->set_is_reverse(m.is_reverse);
+                
+                *(path.add_mapping()) = mapping;
+            }
+        
+        
             // Give each thread a name
             path.set_name("_thread_" + to_string(thread_number++));
             
