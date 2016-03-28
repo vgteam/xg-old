@@ -15,6 +15,7 @@
 #include "sdsl/csa_wt.hpp"
 #include "sdsl/suffix_arrays.hpp"
 #include "dynamic.hpp"
+#include "hash_map_set.hpp"
 
 namespace xg {
 
@@ -53,9 +54,9 @@ public:
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
         bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
     void build(map<int64_t, string>& node_label,
-               map<Side, set<Side> >& from_to,
-               map<Side, set<Side> >& to_from,
-               map<string, map<int, Mapping>>& path_nodes,
+               pair_hash_map<Side, pair_hash_set<Side> >& from_to,
+               pair_hash_map<Side, pair_hash_set<Side> >& to_from,
+               map<string, map<int, Mapping> >& path_nodes,
                bool validate_graph,
                bool print_graph,
                bool store_threads);
