@@ -58,7 +58,7 @@ public:
     void build(map<int64_t, string>& node_label,
                map<int64_t, set<int64_t> >& from_to,
                map<int64_t, set<int64_t> >& to_from,
-               map<string, map<int, Mapping> >& path_nodes,
+               map<string, vector<Mapping> >& path_nodes,
                bool validate_graph,
                bool print_graph,
                bool store_threads);

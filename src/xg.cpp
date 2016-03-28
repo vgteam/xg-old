@@ -385,7 +385,7 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
     // need to store node sides
     map<int64_t, set<int64_t> > from_to;
     map<int64_t, set<int64_t> > to_from;
-    map<string, map<int, Mapping> > path_nodes;
+    map<string, vector<Mapping> > path_nodes;
 
     // This takes in graph chunks and adds them into our temporary storage.
     function<void(Graph&)> lambda = [this,
@@ -418,9 +418,10 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
 #ifdef VERBOSE_DEBUG
             cerr << "Path " << name << ": ";
 #endif
+            vector<Mapping>& path = path_nodes[name];
             for (int j = 0; j < p.mapping_size(); ++j) {
                 const Mapping& m = p.mapping(j);
-                path_nodes[name][m.rank()] = m;
+                path.push_back(m);
 #ifdef VERBOSE_DEBUG
                 cerr << m.position().node_id() * 2 + m.position().is_reverse() << "; ";
 #endif
@@ -428,6 +429,12 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
 #ifdef VERBOSE_DEBUG
             cerr << endl;
 #endif
+
+            std::sort(path.begin(), path.end(),
+                      [](const Mapping& m1, const Mapping& m2) { return m1.rank() < m2.rank(); });
+            std::unique(path.begin(), path.end(),
+                        [](const Mapping& m1, const Mapping& m2) { return m1.rank() == m2.rank(); });
+
         }
     };
     
@@ -444,7 +451,7 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
 void XG::build(map<int64_t, string>& node_label,
                map<int64_t, set<int64_t> >& from_to,
                map<int64_t, set<int64_t> >& to_from,
-               map<string, map<int, Mapping>>& path_nodes,
+               map<string, vector<Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph,
                bool store_threads) {
@@ -644,12 +651,8 @@ void XG::build(map<int64_t, string>& node_label,
         // add path name
         const string& path_name = pathpair.first;
         //cerr << path_name << endl;
-        vector<Mapping> walk;
-        for (auto& m : pathpair.second) {
-            walk.push_back(m.second);
-        }
         path_names += start_marker + path_name + end_marker;
-        XGPath* path = new XGPath(path_name, walk, entity_count, *this, node_label);
+        XGPath* path = new XGPath(path_name, pathpair.second, entity_count, *this, node_label);
         paths.push_back(path);
         path_entities += path->member_count;
     }
@@ -711,20 +714,20 @@ void XG::build(map<int64_t, string>& node_label,
             
             // Grab the Mappings, which are now sorted by rank
             for (auto& m : pathpair.second) {
-                *reconstructed.add_mapping() = m.second;
+                *reconstructed.add_mapping() = m;
                 
                 // Make sure the mapping is perfect
                 // TODO: handle offsets
-                if(m.second.edit_size() > 1) {
+                if(m.edit_size() > 1) {
                     // Not a perfect mapping
                     all_perfect = false;
                     break;
-                } else if(m.second.edit_size() == 0) {
+                } else if(m.edit_size() == 0) {
                     // Is a perfect mapping
                     continue;
                 } else {
                     // We have exactly one edit. Is it perfect?
-                    auto edit = m.second.edit(0);
+                    auto edit = m.edit(0);
                     
                     if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
                         // The edit calls for actual editing
@@ -932,8 +935,7 @@ void XG::build(map<int64_t, string>& node_label,
             // and check node reported at the positions in it
             size_t pos = 0;
             size_t in_path = 0;
-            for (auto& t : path) {
-                auto& m = t.second;
+            for (auto& m : path) {
                 int64_t id = m.position().node_id();
                 bool rev = m.position().is_reverse();
                 // todo rank
@@ -989,20 +991,20 @@ void XG::build(map<int64_t, string>& node_label,
                 
                 // Grab the Mappings, which are now sorted by rank
                 for (auto& m : pathpair.second) {
-                    *reconstructed.add_mapping() = m.second;
+                    *reconstructed.add_mapping() = m;
                     
                     // Make sure the mapping is perfect
                     // TODO: handle offsets
-                    if(m.second.edit_size() > 1) {
+                    if(m.edit_size() > 1) {
                         // Not a perfect mapping
                         all_perfect = false;
                         break;
-                    } else if(m.second.edit_size() == 0) {
+                    } else if(m.edit_size() == 0) {
                         // Is a perfect mapping
                         continue;
                     } else {
                         // We have exactly one edit. Is it perfect?
-                        auto edit = m.second.edit(0);
+                        auto edit = m.edit(0);
                         
                         if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
                             // The edit calls for actual editing
