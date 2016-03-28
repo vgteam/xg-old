@@ -433,6 +433,12 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
         }
     };
 
+    // Get all the chunks via the callback, and have them called back to us.
+    // The other end handles figuring out how much to loop.
+    get_chunks(lambda);
+    
+    path_count = path_nodes.size();
+
     // sort the paths using mapping rank
     // and remove duplicates
     for (auto& p : path_nodes) {
@@ -445,12 +451,6 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
                                }),
                    path.end());
     }
-
-    // Get all the chunks via the callback, and have them called back to us.
-    // The other end handles figuring out how much to loop.
-    get_chunks(lambda);
-    
-    path_count = path_nodes.size();
 
     build(node_label, from_to, to_from, path_nodes, validate_graph, print_graph, store_threads);
     
