@@ -376,8 +376,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
     // temporaries for construction
     map<int64_t, string> node_label;
     // need to store node sides
-    map<Side, set<Side> > from_to;
-    map<Side, set<Side> > to_from;
+    pair_hash_map<Side, pair_hash_set<Side> > from_to;
+    pair_hash_map<Side, pair_hash_set<Side> > to_from;
     map<string, map<int, Mapping> > path_nodes;
 
     // This takes in graph chunks and adds them into our temporary storage.
@@ -435,8 +435,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
 }
 
 void XG::build(map<int64_t, string>& node_label,
-               map<Side, set<Side> >& from_to,
-               map<Side, set<Side> >& to_from,
+               pair_hash_map<Side, pair_hash_set<Side> >& from_to,
+               pair_hash_map<Side, pair_hash_set<Side> >& to_from,
                map<string, map<int, Mapping>>& path_nodes,
                bool validate_graph,
                bool print_graph,
@@ -525,7 +525,12 @@ void XG::build(map<int64_t, string>& node_label,
             if (from_to.find(Side(f_id, end)) != from_to.end()) {
                 auto t_side_itr = from_to.find(Side(f_id, end));
                 if (t_side_itr != from_to.end()) {
+                    vector<Side> t_sides;
                     for (auto& t_side : t_side_itr->second) {
+                        t_sides.push_back(t_side);
+                    } // sort the sides
+                    std::sort(t_sides.begin(), t_sides.end());
+                    for (auto& t_side : t_sides) {
                         size_t t_rank = id_to_rank(t_side.first);
                         // store link
                         f_iv[f_itr] = t_rank;
@@ -561,7 +566,12 @@ void XG::build(map<int64_t, string>& node_label,
             if (to_from.find(Side(t_id, end)) != to_from.end()) {
                 auto f_side_itr = to_from.find(Side(t_id, end));
                 if (f_side_itr != to_from.end()) {
+                    vector<Side> f_sides;
                     for (auto& f_side : f_side_itr->second) {
+                        f_sides.push_back(f_side);
+                    } // sort the sides
+                    std::sort(f_sides.begin(), f_sides.end());
+                    for (auto& f_side : f_sides) {
                         size_t f_rank = id_to_rank(f_side.first);
                         // store link
                         t_iv[t_itr] = f_rank;

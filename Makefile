@@ -59,7 +59,14 @@ DYNAMIC/:
 	git clone --recursive https://github.com/vgteam/DYNAMIC.git
 	cd DYNAMIC && git checkout 2a82bbf
 
-get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/
+sparsehash/:
+	git clone --recursive https://github.com/sparsehash/sparsehash.git
+	cd sparsehash && git checkout a61a6ba
+
+$(INC_DIR)/sparsehash/sparse_hash_map: sparsehash/
+	+cd sparsehash/ && ./autogen.sh && ./configure --prefix=$(CWD) && $(MAKE) && $(MAKE) install
+
+get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/ $(INC_DIR)/sparsehash/sparse_hash_map
 	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
 	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout 25b20b0 && ./install.sh $(CWD)
 
