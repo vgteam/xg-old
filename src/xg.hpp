@@ -312,8 +312,7 @@ public:
     XGPath(const string& path_name,
            const vector<trav_t>& path,
            size_t entity_count,
-           XG& graph,
-           const map<int64_t, string>& node_label);
+           XG& graph);
     string name;
     size_t member_count;
     sd_vector<> members;

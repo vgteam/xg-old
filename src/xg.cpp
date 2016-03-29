@@ -185,8 +185,7 @@ size_t XGPath::serialize(std::ostream& out,
 XGPath::XGPath(const string& path_name,
                const vector<trav_t>& path,
                size_t entity_count,
-               XG& graph,
-               const map<int64_t, string>& node_label) {
+               XG& graph) {
 
     name = path_name;
     member_count = 0;
@@ -213,14 +212,9 @@ XGPath::XGPath(const string& path_name,
     // determine total length
     for (size_t i = 0; i < path.size(); ++i) {
         auto node_id = trav_id(path[i]);
-        auto label_itr = node_label.find(node_id);
-        if (label_itr != node_label.end()) {
-            path_length += label_itr->second.size();
-            ids_iv[i] = node_id;
-        } else {
-            cerr << "[xg] error: when making paths could not find node label for " << node_id << endl;
-            assert(false);
-        }
+        path_length += graph.node_sequence(node_id);
+        ids_iv[i] = node_id;
+        // we will explode if the node isn't in the graph
     }
 
     // make the bitvector for path offsets
@@ -247,13 +241,7 @@ XGPath::XGPath(const string& path_name,
         // record position of node
         offsets[path_off] = 1;
         // and update the offset counter
-        auto label_itr = node_label.find(node_id);
-        if (label_itr != node_label.end()) {
-            path_off += label_itr->second.size();
-        } else {
-            cerr << "[xg] error: when recording offsets could not find node label for " << node_id << endl;
-            assert(false);
-        }
+        path_off += graph.node_length(node_id);
 
         // find the next edge in the path, and record it
         if (i+1 < path.size()) { // but only if there is a next node
@@ -545,7 +533,8 @@ void XG::build(map<id_t, string>& node_label,
             s_iv[i++] = dna3bit(c); // store sequence
         }
     }
-    //node_label.clear();
+    // keep only if we need to validate the graph
+    if (!validate_graph) node_label.clear();
 
     // we have to process all the nodes before we do the edges
     // because we need to ensure full coverage of node space
