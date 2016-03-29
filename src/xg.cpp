@@ -212,7 +212,7 @@ XGPath::XGPath(const string& path_name,
     // determine total length
     for (size_t i = 0; i < path.size(); ++i) {
         auto node_id = trav_id(path[i]);
-        path_length += graph.node_sequence(node_id);
+        path_length += graph.node_length(node_id);
         ids_iv[i] = node_id;
         // we will explode if the node isn't in the graph
     }
@@ -660,7 +660,7 @@ void XG::build(map<id_t, string>& node_label,
         const string& path_name = pathpair.first;
         //cerr << path_name << endl;
         path_names += start_marker + path_name + end_marker;
-        XGPath* path = new XGPath(path_name, pathpair.second, entity_count, *this, node_label);
+        XGPath* path = new XGPath(path_name, pathpair.second, entity_count, *this);
         paths.push_back(path);
         path_entities += path->member_count;
     }
