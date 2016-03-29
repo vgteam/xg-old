@@ -23,17 +23,21 @@ using namespace std;
 using namespace sdsl;
 using namespace vg;
 
-class Traversal {
-public:
-    int64_t id;
-    bool rev;
-    Traversal(int64_t i, bool r) : id(i), rev(r) { }
-};
-
 class XGPath;
-typedef pair<int64_t, bool> Side;
-Side id_to_side(int64_t id);
-int64_t side_to_id(const Side& side);
+//typedef pair<int64_t, bool> Side;
+typedef int64_t id_t; // generic id type
+// node sides
+typedef int64_t side_t;
+id_t side_id(const side_t& side);
+bool side_is_end(const side_t& side);
+side_t make_side(id_t id, bool is_end);
+// node traversals
+typedef pair<int64_t, int32_t> trav_t; // meant to encode pos+side or pos+strand
+id_t trav_id(const trav_t& trav);
+bool trav_is_rev(const trav_t& trav);
+int32_t trav_rank(const trav_t& trav);
+trav_t make_trav(id_t id, bool is_end, int32_t rank);
+
 
 class XG {
 public:
@@ -55,10 +59,10 @@ public:
     // The function passed in here is responsible for looping.
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
         bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
-    void build(map<int64_t, string>& node_label,
-               map<int64_t, set<int64_t> >& from_to,
-               map<int64_t, set<int64_t> >& to_from,
-               map<string, vector<Mapping> >& path_nodes,
+    void build(map<id_t, string>& node_label,
+               map<side_t, set<side_t> >& from_to,
+               map<side_t, set<side_t> >& to_from,
+               map<string, vector<trav_t> >& path_nodes,
                bool validate_graph,
                bool print_graph,
                bool store_threads);
@@ -306,7 +310,7 @@ public:
     XGPath(void) : member_count(0) { }
     ~XGPath(void) { }
     XGPath(const string& path_name,
-           const vector<Mapping>& path,
+           const vector<trav_t>& path,
            size_t entity_count,
            XG& graph,
            const map<int64_t, string>& node_label);
