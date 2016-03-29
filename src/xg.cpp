@@ -2215,9 +2215,11 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
             
             int64_t node_id = rank_to_id(node_rank);
             
+#ifdef VERBOSE_DEBUG
             if(node_id % 10000 == 1) {
                 cerr << "Processing node " << node_id << endl;
             }
+#endif
             
             // We order the thread visits starting there, and then all the threads
             // coming in from other places, ordered by edge traversed
@@ -2328,13 +2330,19 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
     };
     
     // Actually call the inserts
+#ifdef VERBOSE_DEBUG
     cerr << "Inserting threads forwards..." << endl;
+#endif
     insert_in_direction(false);
+#ifdef VERBOSE_DEBUG
     cerr << "Inserting threads backwards..." << endl;
+#endif
     insert_in_direction(true);
     
     // Actually build the B_s arrays for rank and select.
+#ifdef VERBOSE_DEBUG
     cerr << "Creating final compressed array..." << endl;
+#endif
     bs_bake();
     
     
@@ -2504,7 +2512,9 @@ void XG::bs_bake() {
         total_visits += bs_array.size();
     }
 
+#ifdef VERBOSE_DEBUG
     cerr << "Allocating giant B_s array of " << total_visits << " bytes..." << endl;
+#endif
     // Move over to a single array which is big enough to start out with.
     string all_bs_arrays(total_visits, 0);
     
@@ -2515,7 +2525,9 @@ void XG::bs_bake() {
     // We don't start at run 0 because we can't select(0, BS_SEPARATOR).
     all_bs_arrays[pos++] = BS_SEPARATOR;
     
+#ifdef VERBOSE_DEBUG
     cerr << "Baking " << bs_arrays.size() << " sides' arrays..." << endl;
+#endif
     
     for(auto& bs_array : bs_arrays) {
         // Stick everything together with a separator at the front of every
