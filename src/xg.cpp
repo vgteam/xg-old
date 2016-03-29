@@ -568,12 +568,7 @@ void XG::build(map<id_t, string>& node_label,
             if (from_to.find(make_side(f_id, end)) != from_to.end()) {
                 auto t_side_itr = from_to.find(make_side(f_id, end));
                 if (t_side_itr != from_to.end()) {
-                    vector<side_t> t_sides;
                     for (auto& t_side : t_side_itr->second) {
-                        t_sides.push_back(t_side);
-                    } // sort the sides
-                    //std::sort(t_sides.begin(), t_sides.end());
-                    for (auto& t_side : t_sides) {
                         size_t t_rank = id_to_rank(side_id(t_side));
                         // store link
                         f_iv[f_itr] = t_rank;
@@ -609,12 +604,7 @@ void XG::build(map<id_t, string>& node_label,
             if (to_from.find(make_side(t_id, end)) != to_from.end()) {
                 auto f_side_itr = to_from.find(make_side(t_id, end));
                 if (f_side_itr != to_from.end()) {
-                    vector<side_t> f_sides;
                     for (auto& f_side : f_side_itr->second) {
-                        f_sides.push_back(f_side);
-                    } // sort the sides
-                    std::sort(f_sides.begin(), f_sides.end());
-                    for (auto& f_side : f_sides) {
                         size_t f_rank = id_to_rank(side_id(f_side));
                         // store link
                         t_iv[t_itr] = f_rank;
