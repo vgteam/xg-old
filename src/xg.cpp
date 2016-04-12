@@ -1207,6 +1207,14 @@ size_t XG::max_node_rank(void) const {
     return s_cbv_rank(s_cbv.size());
 }
 
+int64_t XG::node_at_seq_pos(size_t pos) const {
+    return rank_to_id(s_cbv_rank(pos));
+}
+
+size_t XG::node_start(int64_t id) const {
+    return s_cbv_select(id_to_rank(id));
+}
+
 size_t XG::max_path_rank(void) const {
     //cerr << pn_bv << endl;
     //cerr << "..." << pn_bv_rank(pn_bv.size()) << endl;
