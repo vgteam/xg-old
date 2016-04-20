@@ -20,7 +20,7 @@
 #define MODE_DYNAMIC 1
 #define MODE_SDSL 2
 
-#define GPBWT_MODE MODE_DYNAMIC
+#define GPBWT_MODE MODE_SDSL
 
 #if GPBWT_MODE == MODE_DYNAMIC
 #include "dynamic.hpp"
