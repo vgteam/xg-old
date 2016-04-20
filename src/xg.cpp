@@ -751,9 +751,7 @@ void XG::build(map<id_t, string>& node_label,
         for (auto& pathpair : path_nodes) {
             thread_t reconstructed;
             
-            bool all_perfect = true;
-            
-            // Grab the Mappings, which are now sorted by rank
+            // Grab the trav_ts, which are now sorted by rank
             for (auto& m : pathpair.second) {
                 // Convert the mapping to a ThreadMapping
                 // trav_ts are already rank sorted and deduplicated.
@@ -762,15 +760,14 @@ void XG::build(map<id_t, string>& node_label,
             }
             
 #if GPBWT_MODE == MODE_SDSL
-            if(all_perfect && is_sorted_dag) {
+            if(is_sorted_dag) {
                 // Save for a batch insert
                 batch.push_back(reconstructed);
             }
+            // TODO: else case!
 #elif GPBWT_MODE == MODE_DYNAMIC
-            if(all_perfect) {
-                // Insert the thread right now
-                insert_thread(reconstructed);
-            }
+            // Insert the thread right now
+            insert_thread(reconstructed);
 #endif
             
         }
@@ -780,6 +777,7 @@ void XG::build(map<id_t, string>& node_label,
             // Do the batch insert
             insert_threads_into_dag(batch);
         }
+        // TODO: else case!
 #endif
     }
     
@@ -1030,42 +1028,10 @@ void XG::build(map<id_t, string>& node_label,
                 // Grab the name
                 reconstructed.set_name(pathpair.first);
                 
-                bool all_perfect = true;
+                // This path should have been inserted. Look for it.
+                assert(count_matches(reconstructed) > 0);
                 
-                // Grab the Mappings, which are now sorted by rank
-                for (auto& m : pathpair.second) {
-                    Mapping* mapping = reconstructed.add_mapping();
-                    mapping->mutable_position()->set_node_id(trav_id(m));
-                    mapping->mutable_position()->set_is_reverse(trav_is_rev(m));
-                    mapping->set_rank(trav_rank(m));
-                    
-                    // Make sure the mapping is perfect
-                    // TODO: handle offsets
-                    if(mapping->edit_size() > 1) {
-                        // Not a perfect mapping
-                        all_perfect = false;
-                        break;
-                    } else if(mapping->edit_size() == 0) {
-                        // Is a perfect mapping
-                        continue;
-                    } else {
-                        // We have exactly one edit. Is it perfect?
-                        auto edit = mapping->edit(0);
-                        
-                        if(edit.from_length() != edit.to_length() || edit.sequence() != "") {
-                            // The edit calls for actual editing
-                            all_perfect = false;
-                            break;
-                        }
-                    }
-                }
-                
-                if(all_perfect) {
-                    // This path should have been inserted. Look for it.
-                    assert(count_matches(reconstructed) > 0);
-                    
-                    threads_expected += 2;
-                }
+                threads_expected += 2;
                 
             }
             
