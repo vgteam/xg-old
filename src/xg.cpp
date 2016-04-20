@@ -179,17 +179,18 @@ size_t XGPath::serialize(std::ostream& out,
     written += offsets.serialize(out, child, "path_node_starts_" + name);
     written += offsets_rank.serialize(out, child, "path_node_starts_rank_" + name);
     written += offsets_select.serialize(out, child, "path_node_starts_select_" + name);
+    
+    sdsl::structure_tree::add_size(child, written);
+    
     return written;
 }
 
 XGPath::XGPath(const string& path_name,
                const vector<trav_t>& path,
                size_t entity_count,
-               XG& graph) {
+               XG& graph,
+               size_t* unique_member_count_out) {
 
-    name = path_name;
-    member_count = 0;
-    
     // path members (of nodes and edges ordered as per f_bv)
     bit_vector members_bv;
     util::assign(members_bv, bit_vector(entity_count));
@@ -280,9 +281,12 @@ XGPath::XGPath(const string& path_name,
             }
         }
     }
-    // set member count as the unique entities that are in the path
     //cerr << uniq_nodes.size() << " vs " << path.size() << endl;
-    member_count = uniq_nodes.size() + uniq_edges.size();
+    if(unique_member_count_out) {
+        // set member count as the unique entities that are in the path
+        // We don't need it but our caller might
+        *unique_member_count_out = uniq_nodes.size() + uniq_edges.size();
+    }
     // compress path membership vectors
     util::assign(members, sd_vector<>(members_bv));
     // and traversal information
@@ -343,25 +347,39 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += t_to_end_cbv.serialize(out, child, "to_is_to_end");
     written += t_from_start_cbv.serialize(out, child, "to_is_from_start");
 
-    written += pn_iv.serialize(out, child, "path_names");
-    written += pn_csa.serialize(out, child, "path_names_csa");
-    written += pn_bv.serialize(out, child, "path_names_starts");
-    written += pn_bv_rank.serialize(out, child, "path_names_starts_rank");
-    written += pn_bv_select.serialize(out, child, "path_names_starts_select");
-    written += pi_iv.serialize(out, child, "path_ids");
-    written += sdsl::write_member(paths.size(), out, child, "path_count");    
-    for (auto path : paths) {
-        written += path->serialize(out, child, path->name);
+    // Treat the paths as their own node
+    size_t paths_written = 0;
+    auto paths_child = sdsl::structure_tree::add_child(child, "paths", sdsl::util::class_name(*this));
+
+    paths_written += pn_iv.serialize(out, paths_child, "path_names");
+    paths_written += pn_csa.serialize(out, paths_child, "path_names_csa");
+    paths_written += pn_bv.serialize(out, paths_child, "path_names_starts");
+    paths_written += pn_bv_rank.serialize(out, paths_child, "path_names_starts_rank");
+    paths_written += pn_bv_select.serialize(out, paths_child, "path_names_starts_select");
+    paths_written += pi_iv.serialize(out, paths_child, "path_ids");
+    paths_written += sdsl::write_member(paths.size(), out, paths_child, "path_count");    
+    for (size_t i = 0; i < paths.size(); i++) {
+        XGPath* path = paths[i];
+        paths_written += path->serialize(out, paths_child, "path:" + path_name(i + 1));
     }
     
-    written += ep_iv.serialize(out, child, "entity_path_mapping");
-    written += ep_bv.serialize(out, child, "entity_path_mapping_starts");
-    written += ep_bv_rank.serialize(out, child, "entity_path_mapping_starts_rank");
-    written += ep_bv_select.serialize(out, child, "entity_path_mapping_starts_select");
+    paths_written += ep_iv.serialize(out, paths_child, "entity_path_mapping");
+    paths_written += ep_bv.serialize(out, paths_child, "entity_path_mapping_starts");
+    paths_written += ep_bv_rank.serialize(out, paths_child, "entity_path_mapping_starts_rank");
+    paths_written += ep_bv_select.serialize(out, paths_child, "entity_path_mapping_starts_select");
+    
+    sdsl::structure_tree::add_size(paths_child, paths_written);
+    written += paths_written;
 
-    written += h_iv.serialize(out, child, "thread_usage_count");
-    written += ts_iv.serialize(out, child, "thread_start_count");
-    written += xg::serialize(bs_iv, out, child, "benedict_arrays");
+    // Treat the threads as their own node.
+    // This will mess up any sort of average size stats, but it will also be useful.
+    auto threads_child = sdsl::structure_tree::add_child(child, "threads", sdsl::util::class_name(*this));
+    size_t threads_written = 0;
+    threads_written += h_iv.serialize(out, threads_child, "thread_usage_count");
+    threads_written += ts_iv.serialize(out, threads_child, "thread_start_count");
+    threads_written += xg::serialize(bs_iv, out, threads_child, "benedict_arrays");
+    sdsl::structure_tree::add_size(threads_child, threads_written);
+    written += threads_written;
 
     sdsl::structure_tree::add_size(child, written);
     return written;
@@ -660,9 +678,11 @@ void XG::build(map<id_t, string>& node_label,
         const string& path_name = pathpair.first;
         //cerr << path_name << endl;
         path_names += start_marker + path_name + end_marker;
-        XGPath* path = new XGPath(path_name, pathpair.second, entity_count, *this);
+        // The path constructor helpfully counts unique path members for us
+        size_t unique_member_count;
+        XGPath* path = new XGPath(path_name, pathpair.second, entity_count, *this, &unique_member_count);
         paths.push_back(path);
-        path_entities += path->member_count;
+        path_entities += unique_member_count;
     }
 
     // handle path names
@@ -827,8 +847,11 @@ void XG::build(map<id_t, string>& node_label,
         cerr << t_iv << endl;
         cerr << t_bv << endl;
         cerr << "paths" << endl;
-        for (auto& path : paths) {
-            cerr << path->name << endl;
+        for (size_t i = 0; i < paths.size(); i++) {
+            // Go through paths by number, so we can determine rank
+            XGPath* path = paths[i];
+            
+            cerr << path_name(i + 1) << endl;
             cerr << path->members << endl;
             cerr << path->ids << endl;
             cerr << path->ranks << endl;
@@ -1326,10 +1349,8 @@ Path XG::path(const string& name) const {
     // Fill in the name
     to_return.set_name(name);
     
-    // We know paths start and end with node members, and that the node members
-    // are separated by edge members. So we need to be able to get just the node
-    // members.
-    size_t total_nodes = (xgpath.member_count + 1) / 2;
+    // There's one ID entry per node visit    
+    size_t total_nodes = xgpath.ids.size();
     
     for(size_t i = 0; i < total_nodes; i++) {
         // For everything on the XGPath, put a Mapping on the real path.
@@ -2194,10 +2215,24 @@ void XG::extend_search(ThreadSearchState& state, const Path& t) const {
     }
 }
 
-size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* child, const std::string name) {
-    // We just use the DYNAMIC serialization and ignore the SDSL parameters for now.
-    // TODO: do something smart with the SDSL structure tree   
-    return to_serialize->serialize(out);
+size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name) {
+    
+    // We need to check to make sure we're actually writing the correct numbers of bytes.
+    size_t start = out.tellp();
+    
+    // We just use the DYNAMIC serialization.  
+    size_t written = to_serialize->serialize(out);
+    
+    // TODO: when https://github.com/nicolaprezza/DYNAMIC/issues/4 is closed,
+    // trust the sizes that DYNAMIC reports. For now, second-guess it and just
+    // look at how far the stream has actually moved.
+    written = (size_t) out.tellp() - start;
+    
+    // And then do the structure tree stuff
+    sdsl::structure_tree_node* child = structure_tree::add_child(parent, name, sdsl::util::class_name(to_serialize));
+    sdsl::structure_tree::add_size(child, written);
+    
+    return written;
 }
 
 XG::dynamic_int_vector* deserialize(istream& in) {

@@ -71,26 +71,26 @@ get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/ $(INC_DIR)/sparsehash/spars
 	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout 25b20b0 && ./install.sh $(CWD)
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
-$(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto pre
-	mkdir -p cpp
-	protoc $(SRC_DIR)/vg.proto --proto_path=$(SRC_DIR) --cpp_out=cpp
+$(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto | pre
+	mkdir -p $(CPP_DIR)
+	protoc $(SRC_DIR)/vg.proto --proto_path=$(SRC_DIR) --cpp_out=$(CPP_DIR)
 
-$(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc pre
-	$(CXX) $(CXXFLAGS) -c -o $(CPP_DIR)/vg.pb.o $(CPP_DIR)/vg.pb.cc $(LD_INCLUDES) $(LD_LIBS)
+$(OBJ_DIR)/vg.pb.o: $(CPP_DIR)/vg.pb.h $(CPP_DIR)/vg.pb.cc | pre
+	$(CXX) $(CXXFLAGS) -c -o $(OBJ_DIR)/vg.pb.o $(CPP_DIR)/vg.pb.cc $(LD_INCLUDES) $(LD_LIBS)
 
-$(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp pre
+$(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(CPP_DIR)/vg.pb.h $(SRC_DIR)/xg.hpp | pre
 	$(CXX) $(CXXFLAGS) $(LD_LIBS) -c -o $@ $(SRC_DIR)/main.cpp $(LD_INCLUDES)
 
-$(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h pre
+$(OBJ_DIR)/xg.o: $(SRC_DIR)/xg.cpp $(SRC_DIR)/xg.hpp $(CPP_DIR)/vg.pb.h | pre
 	$(CXX) $(CXXFLAGS) -c -o $@ $< $(LD_INCLUDES) $(LD_LIBS)
 
-$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre 
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJ_DIR)/main.o $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
+$(BIN_DIR)/$(EXE): $(OBJ_DIR)/main.o $(OBJ_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.hpp | pre 
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJ_DIR)/main.o $(OBJ_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(LD_INCLUDES) $(LD_LIBS) $(STATICFLAGS)
 
-$(LIB_DIR)/libxg.a: $(CPP_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.h pre
-	ar rs $@ $(OBJ_DIR)/xg.o $(CPP_DIR)/vg.pb.o
+$(LIB_DIR)/libxg.a: $(OBJ_DIR)/vg.pb.o $(OBJ_DIR)/xg.o $(INC_DIR)/stream.hpp | pre
+	ar rs $@ $(OBJ_DIR)/xg.o $(OBJ_DIR)/vg.pb.o
 
-$(INC_DIR)/stream.h: pre 
+$(INC_DIR)/stream.hpp: | pre 
 	cd stream && $(MAKE) && cp include/* ../include/
 
 test:
