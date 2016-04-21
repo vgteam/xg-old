@@ -2123,7 +2123,6 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
-#define VERBOSE_DEBUG
 void XG::insert_threads_into_dag(const vector<thread_t>& t) {
 
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
@@ -2216,7 +2215,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
             int64_t node_id = rank_to_id(node_rank);
             
 #ifdef VERBOSE_DEBUG
-            if(node_id % 10000 == 1 || true) {
+            if(node_id % 10000 == 1) {
                 cerr << "Processing node " << node_id << endl;
             }
 #endif
@@ -2360,7 +2359,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
     
     
 }
-#undef VERBOSE_DEBUG
 
 void XG::insert_thread(const thread_t& t) {
     // We're going to insert this thread
