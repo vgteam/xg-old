@@ -2173,6 +2173,10 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         // Say we start one more thread on this side.
         ts_iv[node_side]++;
         
+#ifdef VERBOSE_DEBUG
+        cerr << "A thread starts at " << node_side << " for " <<  node_id << (is_reverse ? "-" : "+") << endl;
+#endif
+        
     };
 
     // We want to go through and insert running forward through the DAG, and
@@ -2218,14 +2222,17 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
 #endif
             
             // We order the thread visits starting there, and then all the threads
-            // coming in from other places, ordered by edge traversed
+            // coming in from other places, ordered by edge traversed.
+            // Stores a pair of thread number and mapping index in the thread.
             list<pair<size_t, size_t>> threads_visiting;
             
             if(thread_numbers_by_start_node.count(node_id)) {
                 // Grab the threads starting here
                 for(size_t thread_number : thread_numbers_by_start_node.at(node_id)) {
-                    // For every thread that starts here, say it visits here with mapping 0
-                    threads_visiting.emplace_back(thread_number, 0);
+                    // For every thread that starts here, say it visits here
+                    // with its first mapping (0 for forward inserts, last one
+                    // for reverse inserts).
+                    threads_visiting.emplace_back(thread_number, insert_reverse ? t[thread_number].size() - 1 : 0);
                 }
                 thread_numbers_by_start_node.erase(node_id);
             }
@@ -2293,8 +2300,11 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                     int64_t next_node_id = next_mapping.node_id;
                     bool next_is_reverse = next_mapping.is_reverse != insert_reverse;
                     
-                    // Figure out the rank of the edge we need to take to get there
-                    size_t next_edge_rank = edge_rank_as_entity(node_id, node_is_reverse, next_node_id, next_is_reverse);
+                    // Figure out the rank of the edge we need to take to get
+                    // there. Note that we need to make sure we can handle going
+                    // forward and backward over edges.
+                    size_t next_edge_rank = edge_rank_as_entity(make_edge(node_id, node_is_reverse,
+                        next_node_id, next_is_reverse));
                     
                     // Look up what local edge number that edge gets and say we follow it.
                     destinations.push_back(edge_rank_to_local_edge_number.at(next_edge_rank));
@@ -2309,6 +2319,13 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                     
                 } else {
                     // This visit ends here
+#ifdef VERBOSE_DEBUG
+                    if(insert_reverse) {
+                        cerr << "A thread ends here because " << visit.second << " is 0 " << endl;
+                    } else {
+                        cerr << "A thread ends here because " << visit.second + 1 << " is >= " << t[visit.first].size() << endl;
+                    }
+#endif
                     destinations.push_back(BS_NULL);
                 }
             }
