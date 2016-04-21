@@ -1019,6 +1019,15 @@ void XG::build(map<id_t, string>& node_label,
                 // Make sure we can search all the threads we find present in the index
                 assert(count_matches(thread) > 0);
                 
+                // Flip the thread around
+                reverse(thread.begin(), thread.end());
+                for(auto& mapping : thread) {
+                    mapping.is_reverse = !mapping.is_reverse;
+                }
+                
+                // We need to be able to find it backwards as well
+                assert(count_matches(thread) > 0);
+                
                 threads_found++;
             }
             
@@ -2114,6 +2123,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
+#define VERBOSE_DEBUG
 void XG::insert_threads_into_dag(const vector<thread_t>& t) {
 
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
@@ -2127,6 +2137,10 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         
         // Set the number of total visits to this side.
         h_iv[(node_rank_as_entity(node_id) - 1) * 2 + is_reverse] = destinations.size();
+    
+#ifdef VERBOSE_DEBUG
+        cerr << "Found " << destinations.size() << " visits total to node " << node_id << (is_reverse ? "-" : "+") << endl;
+#endif
     };
     
     auto emit_edge_traversal = [&](int64_t node_id, bool from_start, int64_t next_node_id, bool to_end) {
@@ -2198,7 +2212,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
             int64_t node_id = rank_to_id(node_rank);
             
 #ifdef VERBOSE_DEBUG
-            if(node_id % 10000 == 1) {
+            if(node_id % 10000 == 1 || true) {
                 cerr << "Processing node " << node_id << endl;
             }
 #endif
@@ -2329,6 +2343,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
     
     
 }
+#undef VERBOSE_DEBUG
 
 void XG::insert_thread(const thread_t& t) {
     // We're going to insert this thread
@@ -2336,7 +2351,7 @@ void XG::insert_thread(const thread_t& t) {
     auto insert_thread_forward = [&](const thread_t& thread) {
     
 #ifdef VERBOSE_DEBUG
-        cerr << "Inserting thread " << thread.name() << " with " << thread.size() << " mappings" << endl;
+        cerr << "Inserting thread with " << thread.size() << " mappings" << endl;
 #endif
         // Where does the current visit fall on its node? On the first node we
         // arbitrarily decide to be first of all the threads starting there.
@@ -2841,10 +2856,29 @@ void XG::extend_search(ThreadSearchState& state, const thread_t& t) const {
             // addition.
             state.range_start = 0;
             state.range_end = h_iv[(node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse];
+            
+#ifdef VERBOSE_DEBUG
+            cerr << "\tFound " << state.range_end << " threads present here." << endl;
+            
+            int64_t here = (node_rank_as_entity(next_id) - 1) * 2 + next_is_reverse;
+            cerr << here << endl;
+            for(int64_t i = here - 5; i < here + 5; i++) {
+                if(i >= 0) {
+                    cerr << "\t\t" << (i == here ? "*" : " ") << "h_iv[" << i << "] = " << h_iv[i] << endl;
+                }
+            }
+            
+#endif
+            
         } else {
             // Else, look at where the path goes to and apply the where_to function to shrink the range down.
             state.range_start = where_to(state.current_side, state.range_start, next_side);
             state.range_end = where_to(state.current_side, state.range_end, next_side);
+            
+#ifdef VERBOSE_DEBUG
+            cerr << "\tFound " << state.range_start << " to " << state.range_end << " threads continuing through." << endl;
+#endif
+            
         }
         
         // Update the side that the state is on
