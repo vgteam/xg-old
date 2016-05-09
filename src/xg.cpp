@@ -1129,7 +1129,14 @@ size_t XG::id_to_rank(int64_t id) const {
 }
 
 int64_t XG::rank_to_id(size_t rank) const {
-    //assert(rank > 0);
+    if(rank == 0) {
+        cerr << "[xg] error: Request for id of rank 0" << endl;
+        exit(1);
+    }
+    if(rank > i_iv.size()) {
+        cerr << "[xg] error: Request for id of rank " << rank << "/" << i_iv.size() << endl;
+        exit(1);
+    }
     return i_iv[rank-1];
 }
 
@@ -1576,9 +1583,11 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) con
     size_t pr2 = path.offsets_rank(stop+1)-1;
     set<int64_t> nodes;
     set<pair<side_t, side_t> > edges;
+    // Grab the IDs visited in order along the path
     auto& pi_wt = path.ids;
     for (size_t i = pr1; i <= pr2; ++i) {
-        int64_t id = rank_to_id(pi_wt[i]);
+        // For all the visits along this section of path, grab the node being visited and all its edges.
+        int64_t id = pi_wt[i];
         nodes.insert(id);
         for (auto& e : edges_from(id)) {
             edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
