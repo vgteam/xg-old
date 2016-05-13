@@ -157,6 +157,8 @@ void XG::load(istream& in) {
 
 void XGPath::load(istream& in) {
     members.load(in);
+    members_rank.load(in, &members);
+    members_select.load(in, &members);
     ids.load(in);
     directions.load(in);
     ranks.load(in);
@@ -1443,12 +1445,19 @@ map<string, vector<Mapping>> XG::node_mappings(int64_t id) const {
     return mappings;
 }
 
-void XG::neighborhood(int64_t id, size_t steps, Graph& g) const {
+void XG::neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps) const {
     *g.add_node() = node(id);
-    expand_context(g, steps);
+    expand_context(g, dist, true, use_steps);
 }
 
-void XG::expand_context(Graph& g, size_t steps, bool add_paths) const {
+void XG::expand_context(Graph& g, size_t dist, bool add_paths, bool use_steps) const {
+    if (use_steps) {
+        expand_context_by_steps(g, dist, add_paths);
+    } else {
+        expand_context_by_length(g, dist, add_paths);
+    }
+}
+void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
     map<int64_t, Node*> nodes;
     map<pair<side_t, side_t>, Edge*> edges;
     set<int64_t> to_visit;
@@ -1515,6 +1524,102 @@ void XG::expand_context(Graph& g, size_t steps, bool add_paths) const {
     }
 }
 
+void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const {
+
+    // map node_id --> min-distance-to-left-side, min-distance-to-right-side
+    // these distances include the length of the node in the table. 
+    map<int64_t, pair<int64_t, int64_t> > node_table;
+    // nodes and edges in graph, so we don't duplicate when we add to protobuf
+    map<int64_t, Node*> nodes;
+    map<pair<side_t, side_t>, Edge*> edges;
+    // bfs queue (id, enter-on-left-size)
+    queue<int64_t> to_visit;
+
+    // add starting graph with distance 0
+    for (size_t i = 0; i < g.node_size(); ++i) {
+        Node* np = g.mutable_node(i);
+        node_table[np->id()] = pair<int64_t, int64_t>(0, 0);
+        nodes[np->id()] = np;
+        to_visit.push(np->id());
+    }
+
+    // add starting edges
+    for (size_t i = 0; i < g.edge_size(); ++i) {
+        auto& edge = g.edge(i);
+        edges[make_pair(make_side(edge.from(), edge.from_start()),
+                        make_side(edge.to(), edge.to_end()))] = g.mutable_edge(i);
+    }
+
+    // expand outward breadth-first
+    while (!to_visit.empty()) {
+        int64_t id = to_visit.front();
+        to_visit.pop();
+        pair<int64_t, int64_t> dists = node_table[id];
+        if (dists.first < length || dists.second < length) {
+            for (auto& edge : edges_of(id)) {
+                // update distance table with other end of edge
+                function<void(int64_t, bool, bool)> lambda = [&](
+                    int64_t other, bool from_start, bool to_end) {
+
+                    int64_t dist = !from_start ? dists.first : dists.second;
+                    int64_t other_dist = dist + node_length(other);
+                    if (dist < length) {
+                        auto it = node_table.find(other);
+                        bool updated = false;
+                        if (it == node_table.end()) {
+                            updated = true;
+                            node_table[other] = make_pair(other_dist, to_end);
+                        } else if (!to_end && other_dist < it->second.first) {
+                            updated = true;
+                            node_table[other].first = other_dist;
+                        } else if (to_end && other_dist < it->second.second) {
+                            updated = true;
+                            node_table[other].second = other_dist;
+                        }
+                        // create the other node
+                        if (nodes.find(other) == nodes.end()) {
+                            Node* np = g.add_node();
+                            nodes[other] = np;
+                            *np = node(other);
+                            cerr << "adding " << np->id() << endl;
+                        }
+                        // create all links back to graph, so as not to break paths
+                        for (auto& other_edge : edges_of(other)) {
+                            auto sides = make_pair(make_side(other_edge.from(),
+                                                             other_edge.from_start()),
+                                                   make_side(other_edge.to(),
+                                                             other_edge.to_end()));
+                            int64_t other_from = other_edge.from() == other ? other_edge.to() :
+                                other_edge.from();
+                            if (nodes.find(other_from) != nodes.end() &&
+                                edges.find(sides) == edges.end()) {
+                                Edge* ep = g.add_edge(); *ep = other_edge;
+                                edges[sides] = ep;
+                                cerr << "adding " << other_edge.from() << "->" << other_edge.to() << ":\n";
+                            }
+                        }
+                        // revisit the other node
+                        if (updated) {
+                            // this may be overly conservative (bumping any updated node)
+                            to_visit.push(other);
+                        }
+                    }
+                };
+                // we can actually do two updates if we have a self loop, hence no else below
+                if (edge.from() == id) {
+                    lambda(edge.to(), edge.from_start(), edge.to_end());
+                }
+                if (edge.to() == id) {
+                    lambda(edge.from(), edge.to_end(), edge.from_start());
+                }
+            }
+        }
+    }
+
+    if (add_paths) {
+        add_paths_to_graph(nodes, g);
+    }
+}
     
 // if the graph ids partially ordered, this works no prob
 // otherwise... owch
@@ -1590,6 +1695,174 @@ void XG::get_connected_nodes(Graph& g) {
 
 size_t XG::path_length(const string& name) const {
     return paths[path_rank(name)-1]->offsets.size();
+}
+
+// if node is on path, return it.  otherwise, return next node (in id space)
+// that is on path.  if none exists, return 0
+int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
+
+    // leave in temporarily for debugging:
+    int64_t simple_id = id;
+    string path_name = this->path_name(path_rank);
+    for (; simple_id < max_id && !path_contains_node(path_name, simple_id); ++simple_id);
+    if (!path_contains_node(path_name, simple_id)) {
+        simple_id = 0;
+    }
+
+    // find our node in the members bit vector of the xgpath
+    XGPath* path = paths[path_rank - 1];
+    size_t node_rank = id_to_rank(id);
+    size_t entity_rank = node_rank_as_entity(node_rank);
+    // if it's a path member, we're done
+    if (path->members[entity_rank - 1] == 1) {
+        return id;
+    }
+
+    // note: rank select in members sd_vector is O(log[|graph| / |path|])
+    // so this will be relatively slow on tiny paths (but so will alternatives
+    // like checking path->members on every node):
+
+    // find number of members before our node in the path
+    size_t members_rank_at_node = path->members_rank(entity_rank - 1);
+    // next member doesn't exist
+    if (members_rank_at_node == path->member_count) {
+        return 0;
+    }
+    // hop to the next member
+    int64_t i = path->members_select(members_rank_at_node + 1);
+
+    // sanity check that we're at a node member
+    assert(f_bv[i] == 1 && path->members[i] == 1);
+    
+    // convert from entity_rank back to node id
+    int64_t next_id = entity_rank_as_node_rank(i + 1);
+
+    // keep temporarily for debugging purposes
+    assert(next_id == simple_id);
+    return next_id;
+}
+
+// if node is on path, return it.  otherwise, return previous node (in id space)
+// that is on path.  if none exists, return 0
+int64_t XG::prev_path_node_by_id(size_t path_rank, int64_t id) const {
+
+    // leave in temporarily for debugging:
+    int64_t simple_id = id;
+    string path_name = this->path_name(path_rank);
+    for (; simple_id > 0 && !path_contains_node(path_name, simple_id); --simple_id);
+    if (!path_contains_node(path_name, simple_id)) {
+        return 0;
+    }
+
+    // find our node in the members bit vector of the xgpath
+    XGPath* path = paths[path_rank - 1];
+    size_t node_rank = id_to_rank(id);
+    size_t entity_rank = node_rank_as_entity(node_rank);
+    // if it's a path member, we're done
+    if (path->members[entity_rank - 1] == 1) {
+        return id;
+    }
+
+    // note: rank select in members sd_vector is O(log[|graph| / |path|])
+    // so this will be relatively slow on tiny paths (but so will alternatives
+    // like checking path->members on every node):
+
+    // find number of members before our node in the path
+    size_t members_rank_at_node = path->members_rank(entity_rank - 1);
+    // previous member doesn't exist
+    if (members_rank_at_node == 0) {
+        return 0;
+    }
+    // hop to the previous member
+    int64_t i = path->members_select(members_rank_at_node);
+    // skip edges till we hit previous node
+    for (; i >= 0 && f_bv[i] == 0; --i);
+
+    // sanity check that we're at a node member
+    assert(i >= 0 && f_bv[i] == 1 && path->members[i] == 1);
+    
+    // convert from entity_rank back to node id
+    int64_t prev_id = entity_rank_as_node_rank(i + 1);
+
+    // keep temporarily for debugging purposes
+    assert(prev_id == simple_id);
+    return prev_id;
+}
+
+// estimate distance (in bp) between two nodes along a path.
+// if a nodes isn't on the path, the nearest node on the path (using id space)
+// is used as a proxy.  In this case, the distance may not be exact
+// due to this heuristic, but should be sufficient for our purposese (evaluating
+// pair consistency).
+// returns -1 if couldn't find distance
+int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) const {
+    // simplifying assumption: id1 lies before id2 on path (and id space)
+    if (id1 > id2) {
+        swap(id1, id2);
+    }
+    size_t path_rank = this->path_rank(name);
+    int64_t next1 = next_path_node_by_id(path_rank, id1);
+    int64_t prev2 = prev_path_node_by_id(path_rank, id2);
+
+    // fail
+    if (next1 == 0 || prev2 == 0) {
+        assert(false); // for now
+        return -1;
+    }
+
+    // find our positions on the path
+    vector<size_t> positions1 = node_positions_in_path(next1, name);
+    vector<size_t> positions2 = node_positions_in_path(prev2, name);
+    // use the last node1 position and first node2 position. 
+    size_t pos1 = positions1.back();
+    size_t pos2 = positions2[0];
+
+    return abs(pos2 - pos1);
+}
+
+// like above, but find minumum over list of paths.  if names is empty, do all paths
+// don't actually take strict minumum over all paths.  rather, prefer paths that
+// contain the nodes when possible. 
+int64_t XG::min_approx_path_distance(const vector<string>& names,
+                                     int64_t id1, int64_t id2) const {
+    vector<int64_t> min_distance(3, numeric_limits<int64_t>::max());
+
+    function<void(const string&)> lambda =[&](const string& name) {
+        int member1 = path_contains_node(name, id1) ? 1 : 0;
+        int member2 = path_contains_node(name, id2) ? 1 : 0;
+        int md_idx = member1 + member2;
+        
+        if (md_idx == 2 ||
+            (md_idx == 1 && min_distance[2] == numeric_limits<int64_t>::max()) ||
+            (md_idx == 0 && min_distance[2] == numeric_limits<int64_t>::max() &&
+             min_distance[1] == numeric_limits<int64_t>::max())) {
+            
+            int64_t dist = approx_path_distance(name, id1, id2);
+            if (dist >= 0 && dist < min_distance[md_idx]) {
+                min_distance[md_idx] = dist;
+            }
+        }
+    };
+
+    if (names.size() > 1) {
+        for (const string& name : names) {
+            lambda(name);
+        }
+    } else {
+        size_t max_path_rank = this->max_path_rank();
+        for (size_t i = 1; i <= max_path_rank; ++i) {
+            lambda(path_name(i));
+        }
+    }
+
+    if (min_distance[2] != numeric_limits<int64_t>::max()) {
+        return min_distance[2];
+    } else if (min_distance[1] != numeric_limits<int64_t>::max()) {
+        return min_distance[1];
+    } else if (min_distance[0] != numeric_limits<int64_t>::max()) {
+        return min_distance[0];
+    }
+    return -1;
 }
 
 // TODO, include paths
