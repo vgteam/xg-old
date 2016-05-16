@@ -123,6 +123,19 @@ public:
     int64_t node_at_path_position(const string& name, size_t pos) const;
     Mapping mapping_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;
+    // if node is on path, return it.  otherwise, return next node (in id space)
+    // that is on path.  if none exists, return 0
+    int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
+    // if node is on path, return it.  otherwise, return previous node (in id space)
+    // that is on path.  if none exists, return 0
+    int64_t prev_path_node_by_id(size_t path_rank, int64_t id) const;
+    // estimate distance (in bp) between two nodes along a path.
+    // if a nodes isn't on the path, the nearest node on the path (using id space)
+    // is used as a proxy.  
+    int64_t approx_path_distance(const string& name, int64_t id1, int64_t id2) const;
+    // like above, but find minumum over list of paths.  if names is empty, do all paths
+    int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
+
 
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
