@@ -1725,7 +1725,7 @@ int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
     // find number of members before our node in the path
     size_t members_rank_at_node = path->members_rank(entity_rank - 1);
     // next member doesn't exist
-    if (members_rank_at_node == path->member_count) {
+    if (members_rank_at_node == path->members.size()) {
         return 0;
     }
     // hop to the next member
