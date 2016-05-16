@@ -1567,9 +1567,12 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
                         auto it = node_table.find(other);
                         bool updated = false;
                         if (it == node_table.end()) {
+                            auto entry = make_pair(numeric_limits<int64_t>::max(),
+                                                   numeric_limits<int64_t>::max());
+                            it = node_table.insert(make_pair(other, entry)).first;
                             updated = true;
-                            node_table[other] = make_pair(other_dist, to_end);
-                        } else if (!to_end && other_dist < it->second.first) {
+                        }
+                        if (!to_end && other_dist < it->second.first) {
                             updated = true;
                             node_table[other].first = other_dist;
                         } else if (to_end && other_dist < it->second.second) {
@@ -1581,7 +1584,6 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
                             Node* np = g.add_node();
                             nodes[other] = np;
                             *np = node(other);
-                            cerr << "adding " << np->id() << endl;
                         }
                         // create all links back to graph, so as not to break paths
                         for (auto& other_edge : edges_of(other)) {
@@ -1595,7 +1597,6 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
                                 edges.find(sides) == edges.end()) {
                                 Edge* ep = g.add_edge(); *ep = other_edge;
                                 edges[sides] = ep;
-                                cerr << "adding " << other_edge.from() << "->" << other_edge.to() << ":\n";
                             }
                         }
                         // revisit the other node
@@ -1610,7 +1611,7 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
                     lambda(edge.to(), edge.from_start(), edge.to_end());
                 }
                 if (edge.to() == id) {
-                    lambda(edge.from(), edge.to_end(), edge.from_start());
+                    lambda(edge.from(), !edge.to_end(), !edge.from_start());
                 }
             }
         }
