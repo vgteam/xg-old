@@ -1689,6 +1689,30 @@ void XG::get_id_range(int64_t id1, int64_t id2, Graph& g) const {
     }
 }
 
+// walk forward in id space, collecting nodes, until at least length bases covered
+// (or end of graph reached).  if forward is false, do go backward
+void XG::get_id_range_by_length(int64_t id, int64_t length, Graph& g, bool forward) const {
+    // find out first base of node's position in the sequence vector
+    size_t rank = id_to_rank(id);
+    size_t start = s_cbv_select(rank);
+    size_t end;
+    // jump by length, checking to make sure we stay in bounds
+    if (forward) {
+        end = s_cbv_rank(min(s_cbv.size() - 1, start + node_length(id) + length));
+    } else {
+        end = s_cbv_rank(1 + max((int64_t)0, (int64_t)(start  - length)));
+    }
+    // convert back to id
+    int64_t id2 = rank_to_id(end);
+
+    // get the id range
+    if (!forward) {
+        swap(id, id2);
+    }
+    get_id_range(id, id2, g);
+}
+
+
 /*
 void XG::get_connected_nodes(Graph& g) {
 }

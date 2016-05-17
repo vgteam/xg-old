@@ -152,6 +152,9 @@ public:
     void expand_context_by_length(Graph& g, size_t length, bool add_paths = true) const;
     void get_connected_nodes(Graph& g) const;
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
+    // walk forward in id space, collecting nodes, until at least length bases covered
+    // (or end of graph reached).  if forward is false, go backwards...
+    void get_id_range_by_length(int64_t id1, int64_t length, Graph& g, bool forward) const;
 
     // gPBWT interface
     
