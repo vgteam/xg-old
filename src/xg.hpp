@@ -123,16 +123,38 @@ public:
     int64_t node_at_path_position(const string& name, size_t pos) const;
     Mapping mapping_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;
+    // if node is on path, return it.  otherwise, return next node (in id space)
+    // that is on path.  if none exists, return 0
+    int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
+    // if node is on path, return it.  otherwise, return previous node (in id space)
+    // that is on path.  if none exists, return 0
+    int64_t prev_path_node_by_id(size_t path_rank, int64_t id) const;
+    // estimate distance (in bp) between two nodes along a path.
+    // if a nodes isn't on the path, the nearest node on the path (using id space)
+    // is used as a proxy.  
+    int64_t approx_path_distance(const string& name, int64_t id1, int64_t id2) const;
+    // like above, but find minumum over list of paths.  if names is empty, do all paths
+    int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
 
-    void neighborhood(int64_t id, size_t steps, Graph& g) const;
+
+    // use_steps flag toggles whether dist refers to steps or length in base pairs
+    void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
     //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
     void get_path_range(string& name, int64_t start, int64_t stop, Graph& g) const;
     // basic method to query regions of the graph
     // add_paths flag allows turning off the (potentially costly, and thread-locking) addition of paths
     // when these are not necessary
-    void expand_context(Graph& g, size_t steps, bool add_paths = true) const;
+    // use_steps flag toggles whether dist refers to steps or length in base pairs
+    void expand_context(Graph& g, size_t dist, bool add_paths = true, bool use_steps = true) const;
+    // expand by steps (original and default)
+    void expand_context_by_steps(Graph& g, size_t steps, bool add_paths = true) const;
+    // expand by length
+    void expand_context_by_length(Graph& g, size_t length, bool add_paths = true) const;
     void get_connected_nodes(Graph& g) const;
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
+    // walk forward in id space, collecting nodes, until at least length bases covered
+    // (or end of graph reached).  if forward is false, go backwards...
+    void get_id_range_by_length(int64_t id1, int64_t length, Graph& g, bool forward) const;
 
     // gPBWT interface
     
@@ -324,6 +346,8 @@ public:
     // not duplicated here.
     
     sd_vector<> members;
+    rank_support_sd<1> members_rank;
+    select_support_sd<1> members_select;    
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;
