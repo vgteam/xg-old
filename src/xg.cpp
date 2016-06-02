@@ -1726,14 +1726,6 @@ size_t XG::path_length(const string& name) const {
 // that is on path.  if none exists, return 0
 int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
 
-    // leave in temporarily for debugging:
-    int64_t simple_id = id;
-    string path_name = this->path_name(path_rank);
-    for (; simple_id < max_id && !path_contains_node(path_name, simple_id); ++simple_id);
-    if (!path_contains_node(path_name, simple_id)) {
-        simple_id = 0;
-    }
-
     // find our node in the members bit vector of the xgpath
     XGPath* path = paths[path_rank - 1];
     size_t node_rank = id_to_rank(id);
@@ -1762,22 +1754,12 @@ int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
     // convert from entity_rank back to node id
     int64_t next_id = entity_rank_as_node_rank(i + 1);
 
-    // keep temporarily for debugging purposes
-    assert(next_id == simple_id);
     return next_id;
 }
 
 // if node is on path, return it.  otherwise, return previous node (in id space)
 // that is on path.  if none exists, return 0
 int64_t XG::prev_path_node_by_id(size_t path_rank, int64_t id) const {
-
-    // leave in temporarily for debugging:
-    int64_t simple_id = id;
-    string path_name = this->path_name(path_rank);
-    for (; simple_id > 0 && !path_contains_node(path_name, simple_id); --simple_id);
-    if (!path_contains_node(path_name, simple_id)) {
-        return 0;
-    }
 
     // find our node in the members bit vector of the xgpath
     XGPath* path = paths[path_rank - 1];
@@ -1809,8 +1791,6 @@ int64_t XG::prev_path_node_by_id(size_t path_rank, int64_t id) const {
     // convert from entity_rank back to node id
     int64_t prev_id = entity_rank_as_node_rank(i + 1);
 
-    // keep temporarily for debugging purposes
-    assert(prev_id == simple_id);
     return prev_id;
 }
 
