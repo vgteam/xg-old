@@ -1946,6 +1946,7 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, size_t rank) const {
     vector<size_t> ranks;
     size_t p = rank-1;
     for (size_t i = 1; i <= node_occs_in_path(id, rank); ++i) {
+#pragma omp critical(ids_select)
         ranks.push_back(paths[p]->ids.select(i, id));
         auto m = paths[p]->mapping(ranks.back());
     }
