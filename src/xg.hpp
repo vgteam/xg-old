@@ -118,8 +118,12 @@ public:
     bool path_contains_entity(const string& name, size_t rank) const;
     void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
     size_t node_occs_in_path(int64_t id, const string& name) const;
+    size_t node_occs_in_path(int64_t id, size_t rank) const;
     vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
+    vector<size_t> node_ranks_in_path(int64_t id, size_t rank) const;
     vector<size_t> node_positions_in_path(int64_t id, const string& name) const;
+    vector<size_t> node_positions_in_path(int64_t id, size_t rank) const;
+    map<string, vector<size_t> > node_positions_in_paths(int64_t id) const;
     int64_t node_at_path_position(const string& name, size_t pos) const;
     Mapping mapping_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;

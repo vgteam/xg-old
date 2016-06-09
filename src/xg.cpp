@@ -1949,15 +1949,23 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) con
 }
 
 size_t XG::node_occs_in_path(int64_t id, const string& name) const {
-    size_t p = path_rank(name)-1;
+    return node_occs_in_path(id, path_rank(name));
+}
+
+size_t XG::node_occs_in_path(int64_t id, size_t rank) const {
+    size_t p = rank-1;
     auto& pi_wt = paths[p]->ids;
     return pi_wt.rank(pi_wt.size(), id);
 }
 
 vector<size_t> XG::node_ranks_in_path(int64_t id, const string& name) const {
+    return node_ranks_in_path(id, path_rank(name));
+}
+
+vector<size_t> XG::node_ranks_in_path(int64_t id, size_t rank) const {
     vector<size_t> ranks;
-    size_t p = path_rank(name)-1;
-    for (size_t i = 1; i <= node_occs_in_path(id, name); ++i) {
+    size_t p = rank-1;
+    for (size_t i = 1; i <= node_occs_in_path(id, rank); ++i) {
         ranks.push_back(paths[p]->ids.select(i, id));
         auto m = paths[p]->mapping(ranks.back());
     }
@@ -1965,13 +1973,28 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, const string& name) const {
 }
 
 vector<size_t> XG::node_positions_in_path(int64_t id, const string& name) const {
-    auto& path = *paths[path_rank(name)-1];
-    auto rank = id_to_rank(id);
+    return node_positions_in_path(id, path_rank(name));
+}
+
+vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
+    auto& path = *paths[rank-1];
     vector<size_t> pos_in_path;
-    for (auto i : node_ranks_in_path(id, name)) {
+    for (auto i : node_ranks_in_path(id, rank)) {
         pos_in_path.push_back(path.positions[i]);
     }
     return pos_in_path;
+}
+
+map<string, vector<size_t> > XG::node_positions_in_paths(int64_t id) const {
+    map<string, vector<size_t> > positions;
+    for (auto& prank : paths_of_node(id)) {
+        auto& path = *paths[prank-1];
+        auto& pos_in_path = positions[path_name(prank)];
+        for (auto i : node_ranks_in_path(id, prank)) {
+            pos_in_path.push_back(path.positions[i]);
+        }
+    }
+    return positions;
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
