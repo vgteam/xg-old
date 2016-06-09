@@ -351,7 +351,7 @@ public:
     
     sd_vector<> members;
     rank_support_sd<1> members_rank;
-    select_support_sd<1> members_select;    
+    select_support_sd<1> members_select;
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;
