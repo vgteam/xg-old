@@ -14,8 +14,17 @@
 //#include "sdsl/csa_bitcompressed.hpp"
 #include "sdsl/csa_wt.hpp"
 #include "sdsl/suffix_arrays.hpp"
-#include "dynamic.hpp"
 #include "hash_map_set.hpp"
+
+// We can have DYNAMIC or SDSL-based gPBWTs
+#define MODE_DYNAMIC 1
+#define MODE_SDSL 2
+
+#define GPBWT_MODE MODE_SDSL
+
+#if GPBWT_MODE == MODE_DYNAMIC
+#include "dynamic.hpp"
+#endif
 
 namespace xg {
 
@@ -47,25 +56,33 @@ public:
                seq_length(0),
                node_count(0),
                edge_count(0),
-               path_count(0),
-               bs_iv(nullptr) { }
+               path_count(0) { }
     ~XG(void);
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
-    void from_stream(istream& in, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
-    void from_graph(Graph& graph, bool validate_graph = false, bool print_graph = false, bool store_threads = false);
+    void from_stream(istream& in, bool validate_graph = false,
+        bool print_graph = false, bool store_threads = false,
+        bool is_sorted_dag = false);
+    void from_graph(Graph& graph, bool validate_graph = false,
+        bool print_graph = false, bool store_threads = false,
+        bool is_sorted_dag = false);
     // Load the graph by calling a function that calls us back with graph chunks.
     // The function passed in here is responsible for looping.
+    // If is_sorted_dag is true and store_threads is true, we store the threads
+    // with an algorithm that only works on topologically sorted DAGs, but which
+    // is faster.
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
-        bool validate_graph = false, bool print_graph = false, bool store_threads = false); 
+        bool validate_graph = false, bool print_graph = false,
+        bool store_threads = false, bool is_sorted_dag = false); 
     void build(map<id_t, string>& node_label,
                map<side_t, set<side_t> >& from_to,
                map<side_t, set<side_t> >& to_from,
                map<string, vector<trav_t> >& path_nodes,
                bool validate_graph,
                bool print_graph,
-               bool store_threads);
+               bool store_threads,
+               bool is_sorted_dag);
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
@@ -94,6 +111,9 @@ public:
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
     // Supports the edge articulated in any orientation. Edge must exist.
     size_t edge_rank_as_entity(const Edge& edge) const;
+    // Given an edge which is in the graph in some orientation, return the edge
+    // oriented as it actually appears.
+    Edge canonicalize(const Edge& edge);
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
@@ -162,17 +182,43 @@ public:
 
     // gPBWT interface
     
-    // We keep our strings in this dynamic succinct rank-select string from DYNAMIC.
-    using dynamic_int_vector = dyn::wt_str;
+#if GPBWT_MODE == MODE_SDSL
+    // We keep our strings in instances of this cool wavelet tree.
+    using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
+#elif GPBWT_MODE == MODE_DYNAMIC
+    using rank_select_int_vector = dyn::rle_str;
+#endif
+    
+    
+    // We define a thread visit that's much smaller than a Protobuf Mapping.
+    struct ThreadMapping {
+        int64_t node_id;
+        bool is_reverse;
+    };
+    
+    // We define a thread as just a vector of these things, instead of a bulky
+    // Path.
+    using thread_t = vector<ThreadMapping>;
     
     // Insert a thread. Path name must be unique or empty.
-    void insert_thread(const Path& t);
+    void insert_thread(const thread_t& t);
+    // Insert a whole group of threads. Names should be unique or empty (though
+    // they aren't used yet). The indexed graph must be a DAG, at least in the
+    // subset traversed by the threads. (Reversing edges are fine, but the
+    // threads in a node must all run in the same direction.) This uses a
+    // special efficient batch insert algorithm for DAGs that lets us just scan
+    // the graph and generate nodes' B_s arrays independently. This must be
+    // called only once, and no threads can have been inserted previously.
+    // Otherwise the gPBWT data structures will be left in an inconsistent
+    // state.
+    void insert_threads_into_dag(const vector<thread_t>& t);
     // Read all the threads embedded in the graph.
-    list<Path> extract_threads() const;
+    list<thread_t> extract_threads() const;
     // Extract a particular thread by name. Name may not be empty.
     // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
-    Path extract_thread(const string& name) const;
+    thread_t extract_thread(const string& name) const;
     // Count matches to a subthread among embedded threads
+    size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
     
     /**
@@ -202,7 +248,7 @@ public:
     };
     
     // Extend a search with the given section of a thread.
-    void extend_search(ThreadSearchState& state, const Path& t) const;
+    void extend_search(ThreadSearchState& state, const thread_t& t) const;
 
     
     char start_marker;
@@ -312,20 +358,48 @@ private:
     // ts stands for "thread start"
     int_vector<> ts_iv;
     
-    // This holds the concatenated Benedict arrays. They are separated with 1s,
-    // with 0s noting the null side (i.e. the thread ends at this node). To find
-    // where the range for a side starts, subtract 2 from the side (to get its
-    // 0-based rank among real sides), select that separator position, and add 1
-    // to get to the first B_s array entry (if any) for the side. Instead of
-    // holding destination sides, we actually hold the index of the edge that
-    // gets taken to the destination side, out of all edges we could take
-    // leaving the node. We offset all the values up by 2, to make room for the
-    // null sentinel and the separator.
-    dynamic_int_vector* bs_iv;
+#if GPBWT_MODE == MODE_SDSL
+    // We use this for creating the sub-parts of the uncompressed B_s arrays.
+    // We don't really support rank and select on this.
+    vector<string> bs_arrays;
+#endif
+    
+    // This holds the concatenated Benedict arrays, with BS_SEPARATOR separating
+    // them, and BS_NULL noting the null side (i.e. the thread ends at this
+    // node). Instead of holding destination sides, we actually hold the index
+    // of the edge that gets taken to the destination side, out of all edges we
+    // could take leaving the node. We offset all the values up by 2, to make
+    // room for the null sentinel and the separator. Currently the separator
+    // isn't used; we just place these by side.
+    rank_select_int_vector bs_single_array;
+    
+    // A "destination" is either a local edge number + 2, BS_NULL for stopping,
+    // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
+    using destination_t = size_t;
     
     // Constants used as sentinels in bs_iv above.
-    const static int64_t BS_SEPARATOR = 1;
-    const static int64_t BS_NULL = 0;
+    const static destination_t BS_SEPARATOR;
+    const static destination_t BS_NULL;
+    
+    // We access this only through these wrapper methods, because we're going to
+    // swap out functionality.
+    // Sides are from 1-based node ranks, so start at 2.
+    // Get the item in a B_s array for a side at an offset.
+    destination_t bs_get(int64_t side, int64_t offset) const;
+    // Get the rank of a position among positions pointing to a certain
+    // destination from a side.
+    size_t bs_rank(int64_t side, int64_t offset, destination_t value) const;
+    // Set the whole B_s array for a size. May throw an error if B_s for that
+    // side has already been set (as overwrite is not necessarily possible).
+    void bs_set(int64_t side, vector<destination_t> new_array);
+    // Insert into the B_s array for a side
+    void bs_insert(int64_t side, int64_t offset, destination_t value);
+    
+    // Prepare the B_s array data structures for query. After you call this, you
+    // shouldn't call bs_set or bs_insert.
+    void bs_bake();
+    
+    
     
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
@@ -345,7 +419,6 @@ public:
            size_t entity_count,
            XG& graph,
            size_t* unique_member_count_out = nullptr);
-
     // Path names are stored in the XG object, in a compressed fashion, and are
     // not duplicated here.
     
@@ -371,11 +444,12 @@ Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse
 void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 void to_text(ostream& out, Graph& graph);
 
-// Serialize a DYNAMIC rle_str in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(XG::dynamic_int_vector* to_serialize, ostream& out, sdsl::structure_tree_node* parent, const std::string name);
+// Serialize a rank_select_int_vector in an SDSL serialization compatible way. Returns the number of bytes written.
+size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
+    sdsl::structure_tree_node* parent, const std::string name);
 
-// Deserialize a DYNAMIC rle_str in an SDSL serialization compatible way.
-XG::dynamic_int_vector* deserialize(istream& in);
+// Deserialize a rank_select_int_vector in an SDSL serialization compatible way.
+void deserialize(XG::rank_select_int_vector& target, istream& in);
 
 // Determine if two edges are equivalent (the same or one is the reverse of the other)
 bool edges_equivalent(const Edge& e1, const Edge& e2);

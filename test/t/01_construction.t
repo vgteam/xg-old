@@ -5,13 +5,14 @@ BASH_TAP_ROOT=../bash-tap
 
 PATH=../bin:$PATH # for xg
 
-plan tests 11
+plan tests 12
 
 is $(xg -Vv data/l.vg 2>&1 | grep ok | wc -l) 1 "a small graph verifies"
 is $(xg -Vv data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with two named paths verifies"
 is $(xg -Vrv data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with threads verifies"
+is $(xg -Vrdv data/lg.vg 2>&1 | grep ok | wc -l) 1 "a small graph with batch-inserted threads verifies"
 is $(xg -Vrv data/l+.vg 2>&1 | grep ok | wc -l) 1 "node ids need not start at 1"
-is $(xg -Vrv data/z.vg 2>&1 | grep ok | wc -l) 1 "a 1mb graph verifies"
+is $(xg -Vrdv data/z.vg 2>&1 | grep ok | wc -l) 1 "a 1mb graph verifies"
 xg -Vv data/z.vg -o data/z.vg.idx 2>/dev/null
 is $? 0 "serialization works"
 rm -f data/z.vg.idx
