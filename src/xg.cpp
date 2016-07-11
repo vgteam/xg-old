@@ -1494,7 +1494,10 @@ void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
         }
         to_visit = to_visit_next;
     }
-    // then add connected nodes
+    // then add connected nodes that we have edges to but didn't pull in yet.
+    // These are the nodes reached on the last step; we won't follow their edges
+    // to new noded.
+    set<int64_t> last_step_nodes;
     for (auto& e : edges) {
         auto& edge = e.second;
         // get missing nodes
@@ -1503,14 +1506,41 @@ void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
             Node* np = g.add_node();
             nodes[f] = np;
             *np = node(f);
+            last_step_nodes.insert(f);
         }
         int64_t t = edge->to();
         if (nodes.find(t) == nodes.end()) {
             Node* np = g.add_node();
             nodes[t] = np;
             *np = node(t);
+            last_step_nodes.insert(t);
         }
     }
+    // We do need to find edges that connect the nodes we just grabbed on the
+    // last step. Otherwise we'll produce something that isn't really a useful
+    // subgraph, because there might be edges connecting the nodes you have that
+    // you don't see.
+    for(auto& n : last_step_nodes) {
+        for (auto& edge : edges_from(n)) {
+            if(last_step_nodes.count(edge.to())) {
+                // This edge connects two nodes that were added on the last
+                // step, and so wouldn't have been found by the main loop.
+                
+                // Determine if it's been seen already (somehow).
+                // TODO: it probably shouldn't have been, unless it's a self loop or something.
+                auto sides = make_pair(make_side(edge.from(), edge.from_start()),
+                                       make_side(edge.to(), edge.to_end()));
+                if (edges.find(sides) == edges.end()) {
+                    // If it isn't there already, add it to the graph
+                    Edge* ep = g.add_edge(); *ep = edge;
+                    edges[sides] = ep;
+                }
+            }
+        }       
+    }
+    // Edges between the last step nodes and other nodes will have already been
+    // pulled in, on the step when those other nodes were processed by the main
+    // loop.
     if (add_paths) {
         add_paths_to_graph(nodes, g);
     }
