@@ -1062,6 +1062,7 @@ Node XG::node(int64_t id) const {
 
 string XG::node_sequence(int64_t id) const {
     size_t rank = id_to_rank(id);
+    assert(rank != 0); // We can crash if we try to look up rank 0.
     size_t start = s_cbv_select(rank);
     size_t end = rank == node_count ? s_cbv.size() : s_cbv_select(rank+1);
     string s; s.resize(end-start);
@@ -1707,7 +1708,10 @@ void XG::get_id_range(int64_t id1, int64_t id2, Graph& g) const {
     id1 = max(min_id, id1);
     id2 = min(max_id, id2);
     for (auto i = id1; i <= id2; ++i) {
-        *g.add_node() = node(i);
+        if(id_to_rank(i) != 0) { 
+            // We actually have a node with that ID.
+            *g.add_node() = node(i);
+        }
     }
 }
 
