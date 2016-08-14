@@ -143,10 +143,11 @@ public:
     vector<size_t> node_ranks_in_path(int64_t id, size_t rank) const;
     vector<size_t> node_positions_in_path(int64_t id, const string& name) const;
     vector<size_t> node_positions_in_path(int64_t id, size_t rank) const;
-    map<string, vector<size_t> > node_positions_in_paths(int64_t id) const;
+    map<string, vector<size_t> > node_positions_in_paths(int64_t id, bool is_rev = false) const;
     int64_t node_at_path_position(const string& name, size_t pos) const;
     Mapping mapping_at_path_position(const string& name, size_t pos) const;
     size_t path_length(const string& name) const;
+    size_t path_length(size_t rank) const;
     // if node is on path, return it.  otherwise, return next node (in id space)
     // that is on path.  if none exists, return 0
     int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
@@ -164,16 +165,24 @@ public:
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
     //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
-    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g) const;
+    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev = false) const;
     // basic method to query regions of the graph
     // add_paths flag allows turning off the (potentially costly, and thread-locking) addition of paths
     // when these are not necessary
     // use_steps flag toggles whether dist refers to steps or length in base pairs
-    void expand_context(Graph& g, size_t dist, bool add_paths = true, bool use_steps = true) const;
+    void expand_context(Graph& g, size_t dist, bool add_paths = true, bool use_steps = true,
+                        bool expand_forward = true, bool expand_backward = true,
+                        int64_t until_node = 0) const;
+
     // expand by steps (original and default)
-    void expand_context_by_steps(Graph& g, size_t steps, bool add_paths = true) const;
+    void expand_context_by_steps(Graph& g, size_t steps, bool add_paths = true,
+                                 bool expand_forward = true, bool expand_backward = true,
+                                 int64_t until_node = 0) const;
     // expand by length
-    void expand_context_by_length(Graph& g, size_t length, bool add_paths = true) const;
+    void expand_context_by_length(Graph& g, size_t length, bool add_paths = true,
+                                  bool expand_forward = true, bool expand_backward = true,
+                                  int64_t until_node = 0) const;
+    // get the nodes one step from the graph
     void get_connected_nodes(Graph& g) const;
     void get_id_range(int64_t id1, int64_t id2, Graph& g) const;
     // walk forward in id space, collecting nodes, until at least length bases covered

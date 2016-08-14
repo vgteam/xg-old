@@ -1238,7 +1238,6 @@ size_t XG::max_path_rank(void) const {
 }
 
 size_t XG::node_rank_as_entity(int64_t id) const {
-    //cerr << id_to_rank(id) << endl;
     return f_bv_select(id_to_rank(id))+1;
 }
 
@@ -1442,14 +1441,19 @@ void XG::neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps) const {
     expand_context(g, dist, true, use_steps);
 }
 
-void XG::expand_context(Graph& g, size_t dist, bool add_paths, bool use_steps) const {
+void XG::expand_context(Graph& g, size_t dist, bool add_paths, bool use_steps,
+                        bool expand_forward, bool expand_backward,
+                        int64_t until_node) const {
     if (use_steps) {
-        expand_context_by_steps(g, dist, add_paths);
+        expand_context_by_steps(g, dist, add_paths, expand_forward, expand_backward, until_node);
     } else {
-        expand_context_by_length(g, dist, add_paths);
+        expand_context_by_length(g, dist, add_paths, expand_forward, expand_backward, until_node);
     }
 }
-void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
+
+void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths,
+                                 bool expand_forward, bool expand_backward,
+                                 int64_t until_node) const {
     map<int64_t, Node*> nodes;
     map<pair<side_t, side_t>, Edge*> edges;
     set<int64_t> to_visit;
@@ -1478,7 +1482,18 @@ void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
                 nodes[id] = np;
                 *np = node(id);
             }
-            for (auto& edge : edges_of(id)) {
+            vector<Edge> edges_todo;
+            if (expand_forward && expand_backward) {
+                edges_todo = edges_of(id);
+            } else if (expand_forward) {
+                edges_todo = edges_from(id);
+            } else if (expand_backward) {
+                edges_todo = edges_to(id);
+            } else {
+                cerr << "[xg] error: Requested neither forward no backward context expansion" << endl;
+                exit(1);
+            }
+            for (auto& edge : edges_todo) {
                 auto sides = make_pair(make_side(edge.from(), edge.from_start()),
                                        make_side(edge.to(), edge.to_end()));
                 if (edges.find(sides) == edges.end()) {
@@ -1490,6 +1505,9 @@ void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
                 } else {
                     to_visit_next.insert(edge.from());
                 }
+            }
+            if (until_node != 0 && nodes.find(until_node) != nodes.end()) {
+                break;
             }
         }
         to_visit = to_visit_next;
@@ -1516,7 +1534,9 @@ void XG::expand_context_by_steps(Graph& g, size_t steps, bool add_paths) const {
     }
 }
 
-void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const {
+void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths,
+                                  bool expand_forward, bool expand_backward,
+                                  int64_t until_node) const {
 
     // map node_id --> min-distance-to-left-side, min-distance-to-right-side
     // these distances include the length of the node in the table. 
@@ -1543,18 +1563,30 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
     }
 
     // expand outward breadth-first
-    while (!to_visit.empty()) {
+    while (!to_visit.empty() && (until_node == 0 || nodes.find(until_node) == nodes.end())) {
         int64_t id = to_visit.front();
         to_visit.pop();
         pair<int64_t, int64_t> dists = node_table[id];
         if (dists.first < length || dists.second < length) {
-            for (auto& edge : edges_of(id)) {
+            vector<Edge> edges_todo;
+            if (expand_forward && expand_backward) {
+                edges_todo = edges_of(id);
+            } else if (expand_forward) {
+                edges_todo = edges_from(id);
+            } else if (expand_backward) {
+                edges_todo = edges_to(id);
+            } else {
+                cerr << "[xg] error: Requested neither forward no backward context expansion" << endl;
+                exit(1);
+            }
+            for (auto& edge : edges_todo) {
                 // update distance table with other end of edge
                 function<void(int64_t, bool, bool)> lambda = [&](
                     int64_t other, bool from_start, bool to_end) {
 
                     int64_t dist = !from_start ? dists.first : dists.second;
-                    int64_t other_dist = dist + node_length(other);
+                    Node other_node = node(other);
+                    int64_t other_dist = dist + other_node.sequence().size();
                     if (dist < length) {
                         auto it = node_table.find(other);
                         bool updated = false;
@@ -1575,7 +1607,7 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths) const
                         if (nodes.find(other) == nodes.end()) {
                             Node* np = g.add_node();
                             nodes[other] = np;
-                            *np = node(other);
+                            *np = other_node;
                         }
                         // create all links back to graph, so as not to break paths
                         for (auto& other_edge : edges_of(other)) {
@@ -1712,6 +1744,10 @@ void XG::get_connected_nodes(Graph& g) {
 
 size_t XG::path_length(const string& name) const {
     return paths[path_rank(name)-1]->offsets.size();
+}
+
+size_t XG::path_length(size_t rank) const {
+    return paths[rank-1]->offsets.size();
 }
 
 // if node is on path, return it.  otherwise, return next node (in id space)
@@ -1866,15 +1902,18 @@ int64_t XG::min_approx_path_distance(const vector<string>& names,
     return -1;
 }
 
-// TODO, include paths
-void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g) const {
+void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
     // what is the node at the start, and at the end
     auto& path = *paths[path_rank(name)-1];
     size_t plen = path.offsets.size();
     if (start > plen) return; // no overlap with path
-    size_t pr1 = path.offsets_rank(start+1)-1;
     // careful not to exceed the path length
     if (stop >= plen) stop = plen-1;
+    if (is_rev) {
+        start = plen - start;
+        stop = plen - stop;
+    }
+    size_t pr1 = path.offsets_rank(start+1)-1;
     size_t pr2 = path.offsets_rank(stop+1)-1;
     set<int64_t> nodes;
     set<pair<side_t, side_t> > edges;
@@ -1958,13 +1997,16 @@ vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
     return pos_in_path;
 }
 
-map<string, vector<size_t> > XG::node_positions_in_paths(int64_t id) const {
+map<string, vector<size_t> > XG::node_positions_in_paths(int64_t id, bool is_rev) const {
     map<string, vector<size_t> > positions;
     for (auto& prank : paths_of_node(id)) {
         auto& path = *paths[prank-1];
         auto& pos_in_path = positions[path_name(prank)];
         for (auto i : node_ranks_in_path(id, prank)) {
-            pos_in_path.push_back(path.positions[i]);
+            size_t pos = (is_rev ?
+                          path_length(prank) - path.positions[i] - node_length(id)
+                          : path.positions[i]);
+            pos_in_path.push_back(pos);
         }
     }
     return positions;
