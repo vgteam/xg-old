@@ -1,7 +1,7 @@
 # xg
 ## *succinct labeled graphs with collections and paths*
 
-[![Build Status](https://travis-ci.org/ekg/xg.svg)](https://travis-ci.org/ekg/xg)
+[![Build Status](https://travis-ci.org/vgteam/xg.svg)](https://travis-ci.org/vgteam/xg)
 
 ## what?
 
