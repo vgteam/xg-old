@@ -68,7 +68,7 @@ $(INC_DIR)/sparsehash/sparse_hash_map: sparsehash/
 
 get-deps: $(CMAKE_BIN) protobuf/ sdsl-lite/ DYNAMIC/ $(INC_DIR)/sparsehash/sparse_hash_map
 	cd protobuf && git checkout dfae9e3 && ./autogen.sh || ./autogen.sh && ./configure --prefix="$(CWD)" && make -j 8 && make install && export PATH=$(CWD)/bin:$$PATH
-	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout 25b20b0 && ./install.sh $(CWD)
+	PATH=`pwd`/cmake-3.3.0-rc2-Linux-x86_64/bin/:$$PATH && cd sdsl-lite && git checkout c91314f && ./install.sh $(CWD)
 
 $(CPP_DIR)/vg.pb.cc: $(CPP_DIR)/vg.pb.h
 $(CPP_DIR)/vg.pb.h: $(SRC_DIR)/vg.proto | pre
