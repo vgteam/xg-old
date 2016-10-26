@@ -179,6 +179,8 @@ size_t XGPath::serialize(std::ostream& out,
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
     size_t written = 0;
     written += members.serialize(out, child, "path_membership_" + name);
+    written += members_rank.serialize(out, child, "path_membership_" + name);
+    written += members_select.serialize(out, child, "path_membership_" + name);
     written += ids.serialize(out, child, "path_node_ids_" + name);
     written += directions.serialize(out, child, "path_node_directions_" + name);
     written += ranks.serialize(out, child, "path_mapping_ranks_" + name);
@@ -295,7 +297,9 @@ XGPath::XGPath(const string& path_name,
         *unique_member_count_out = uniq_nodes.size() + uniq_edges.size();
     }
     // compress path membership vectors
-    util::assign(members, sd_vector<>(members_bv));
+    util::assign(members, bit_vector(members_bv));
+    util::assign(members_rank, rank_support_v<1>(&members));
+    util::assign(members_select, bit_vector::select_1_type(&members));
     // and traversal information
     util::assign(directions, sd_vector<>(directions_bv));
     // handle entity lookup structure (wavelet tree)
@@ -966,7 +970,7 @@ void XG::build(map<id_t, string>& node_label,
             size_t prank = path_rank(name);
             //cerr << path_name(prank) << endl;
             assert(path_name(prank) == name);
-            sd_vector<>& pe_bv = paths[prank-1]->members;
+            bit_vector& pe_bv = paths[prank-1]->members;
             int_vector<>& pp_iv = paths[prank-1]->positions;
             sd_vector<>& dir_bv = paths[prank-1]->directions;
             // check each entity in the nodes is present
@@ -1908,7 +1912,6 @@ int64_t XG::min_approx_path_distance(const vector<string>& names,
             (md_idx == 1 && min_distance[2] == numeric_limits<int64_t>::max()) ||
             (md_idx == 0 && min_distance[2] == numeric_limits<int64_t>::max() &&
              min_distance[1] == numeric_limits<int64_t>::max())) {
-            
             int64_t dist = approx_path_distance(name, id1, id2);
             if (dist >= 0 && dist < min_distance[md_idx]) {
                 min_distance[md_idx] = dist;
