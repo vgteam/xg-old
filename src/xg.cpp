@@ -1884,8 +1884,8 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
     // use the last node1 position and first node2 position. 
     int64_t pos1 = (int64_t)positions1.back();
     int64_t pos2 = (int64_t)positions2[0];
-    // shift over to the right of the left node if it's unchanged
-    if (next1 == id1) {
+    // shift over to the right of the left node if it's unchanged, and distinct from the right node.
+    if (next1 == id1 && next1 != prev2) {
         pos1 += node_length(next1);
     }
 
