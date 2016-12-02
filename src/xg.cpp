@@ -3077,7 +3077,7 @@ size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
     // TODO: when https://github.com/nicolaprezza/DYNAMIC/issues/4 is closed,
     // trust the sizes that DYNAMIC reports. For now, second-guess it and just
     // look at how far the stream has actually moved.
-    //written = (size_t) out.tellp() - start;
+    written = (size_t) out.tellp() - start;
     
     // And then do the structure tree stuff
     sdsl::structure_tree_node* child = structure_tree::add_child(parent, name, sdsl::util::class_name(to_serialize));
