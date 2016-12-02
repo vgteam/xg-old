@@ -1,6 +1,8 @@
 #include "xg.hpp"
 #include "stream.hpp"
 
+#include <bitset>
+
 namespace xg {
 
 id_t side_id(const side_t& side) {
@@ -2793,6 +2795,13 @@ void XG::bs_set(int64_t side, vector<destination_t> new_array) {
     cerr << endl;
 #endif
 #elif GPBWT_MODE == MODE_DYNAMIC
+    auto current_separators = bs_single_array.rank(bs_single_array.size(), BS_SEPARATOR);
+    while(current_separators <= side - 2) {
+        // Tack on separators until we have enough
+        bs_single_array.insert(bs_single_array.size(), BS_SEPARATOR);
+        current_separators++;
+    }
+
     // Where does the block we want start?
     size_t this_range_start = bs_single_array.select(side - 2, BS_SEPARATOR) + 1;
     
@@ -2878,6 +2887,75 @@ void XG::bs_bake() {
     
     bs_arrays.clear();
 #endif
+}
+
+void XG::bs_dump(ostream& out) const {
+#if GPBWT_MODE == MODE_SDSL
+    if(!bs_arrays.empty()) {
+        // We still have per-side arrays
+        
+        for(auto& array : bs_arrays) {
+            // For each side in order
+            out << "---SEP---" << endl;
+            for(auto& entry : array) {
+                if(entry == BS_NULL) {
+                    // Mark nulls
+                    out << "**NULL**" << endl;
+                } else {
+                    // Output adjusted, actual edge numbers
+                    out << entry - 2 << endl;
+                }
+            }
+        }
+    } else {
+        // We have a single big array
+        
+        for(size_t i = 0; i < bs_single_array.size(); i++) {
+            auto entry = bs_single_array[i];
+            if(entry == BS_SEPARATOR) {
+                /// Mark separators
+                out << "---SEP---" << endl;
+            } else if(entry == BS_NULL) {
+                // Mark nulls
+                out << "**NULL**" << endl;
+            } else {
+                // Output adjusted, actual edge numbers
+                out << entry - 2 << endl;
+            }
+        }
+        
+        // Now dump the wavelet tree to a string
+        stringstream wt_dump;
+        bs_single_array.serialize(wt_dump, nullptr, "");
+        
+        out << endl << "++++Serialized Bits++++" << endl;
+        
+        // Turn all the bytes into binary representations
+        for(auto& letter : wt_dump.str()) {
+            // Make each into a bitset
+            bitset<8> bits(letter);
+            out << bits << endl;
+        }
+        
+    }
+#elif GPBWT_MODE == MODE_DYNAMIC
+    auto& bs_single_array = const_cast<rank_select_int_vector&>(this->bs_single_array);
+    
+    for(size_t i = 0; i < bs_single_array.size(); i++) {
+        auto entry = bs_single_array.at(i);
+        if(entry == BS_SEPARATOR) {
+            /// Mark separators
+            out << "---SEP---" << endl;
+        } else if(entry == BS_NULL) {
+            // Mark nulls
+            out << "**NULL**" << endl;
+        } else {
+            // Output adjusted, actual edge numbers
+            out << entry - 2 << endl;
+        }
+    }
+#endif
+    
 }
 
 size_t XG::count_matches(const thread_t& t) const {
@@ -2993,7 +3071,7 @@ size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
     // TODO: when https://github.com/nicolaprezza/DYNAMIC/issues/4 is closed,
     // trust the sizes that DYNAMIC reports. For now, second-guess it and just
     // look at how far the stream has actually moved.
-    written = (size_t) out.tellp() - start;
+    //written = (size_t) out.tellp() - start;
     
     // And then do the structure tree stuff
     sdsl::structure_tree_node* child = structure_tree::add_child(parent, name, sdsl::util::class_name(to_serialize));
