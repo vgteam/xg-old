@@ -118,6 +118,7 @@ public:
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
 
+    // Pull out the path with the given name.
     Path path(const string& name) const;
     // Returns the rank of the path with the given name, or 0 if no such path
     // exists.
@@ -445,6 +446,7 @@ public:
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "");
+    // Get a mapping. Note that the mapping will not have its lengths filled in.
     Mapping mapping(size_t offset); // 0-based
 };
 

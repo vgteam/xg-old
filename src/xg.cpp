@@ -1358,7 +1358,13 @@ Path XG::path(const string& name) const {
     
     for(size_t i = 0; i < total_nodes; i++) {
         // For everything on the XGPath, put a Mapping on the real path.
-        *(to_return.add_mapping()) = xgpath.mapping(i);
+        Mapping* m = to_return.add_mapping();
+        *m = xgpath.mapping(i);
+        // Add one full length match edit, because the XGPath doesn't know how
+        // to make it.
+        Edit* e = m->add_edit();
+        e->set_from_length(node_length(m->position().node_id()));
+        e->set_to_length(e->from_length());
     }
     
     return to_return;
