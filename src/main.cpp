@@ -37,6 +37,7 @@ void help_main(char** argv) {
          << "    -R, --report FILE    save an HTML space usage report to FILE when serializing" << endl
          << "    -D, --debug          show debugging output" << endl
          << "    -T, --text-output    write text instead of vg protobuf" << endl
+         << "    -b, --dump-bs FILE   dump the gPBWT to the given file" << endl
          << "    -h, --help           this text" << endl;
 }
 
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
     bool store_threads = false;
     bool is_sorted_dag = false;
     string report_name;
+    string b_array_name;
     
     int c;
     optind = 1; // force optind past command positional argument
@@ -98,11 +100,12 @@ int main(int argc, char** argv) {
                 {"debug", no_argument, 0, 'D'},
                 {"text-output", no_argument, 0, 'T'},
                 {"validate", no_argument, 0, 'V'},
+                {"dump-bs", required_argument, 0, 'b'},
                 {0, 0, 0, 0}
             };
 
         int option_index = 0;
-        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxrdTO:S:E:VR:P:F:",
+        c = getopt_long (argc, argv, "hv:o:i:f:t:s:c:n:p:DxrdTO:S:E:VR:P:F:b:",
                          long_options, &option_index);
 
         // Detect the end of the options.
@@ -203,6 +206,10 @@ int main(int argc, char** argv) {
             report_name = optarg;
             break;
             
+        case 'b':
+            b_array_name = optarg;
+            break;
+            
         case 'h':
         case '?':
             help_main(argv);
@@ -241,7 +248,7 @@ int main(int argc, char** argv) {
     // Prepare structure tree for serialization
     unique_ptr<sdsl::structure_tree_node> structure;
     
-    if(!report_name.empty()) {
+    if (!report_name.empty()) {
         // We need to make a report, so we need the structure. Make a real tree
         // node. The unique_ptr handles deleting.
         structure = unique_ptr<sdsl::structure_tree_node>(new sdsl::structure_tree_node("name", "type"));
@@ -259,7 +266,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if(!report_name.empty()) {
+    if (!report_name.empty()) {
         // Save the report
         ofstream out;
         out.open(report_name.c_str());
@@ -387,6 +394,13 @@ int main(int argc, char** argv) {
             }
             
         }
+    }
+
+    if (!b_array_name.empty()) {
+        // Dump B array
+        ofstream out;
+        out.open(b_array_name.c_str());
+        graph->bs_dump(out);
     }
 
     // clean up

@@ -124,6 +124,7 @@ public:
     size_t entity_rank_as_node_rank(size_t rank) const;
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
 
+    // Pull out the path with the given name.
     Path path(const string& name) const;
     // Returns the rank of the path with the given name, or 0 if no such path
     // exists.
@@ -198,8 +199,8 @@ public:
     // gPBWT interface
     
 #if GPBWT_MODE == MODE_SDSL
-    // We keep our strings in instances of this cool wavelet tree.
-    using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
+    // We keep our strings in instances of this cool run-length-compressed wavelet tree.
+    using rank_select_int_vector = sdsl::wt_rlmn<sdsl::sd_vector<>>;
 #elif GPBWT_MODE == MODE_DYNAMIC
     using rank_select_int_vector = dyn::rle_str;
 #endif
@@ -265,6 +266,8 @@ public:
     // Extend a search with the given section of a thread.
     void extend_search(ThreadSearchState& state, const thread_t& t) const;
 
+    // Dump the whole B_s array to the given output stream as a report.
+    void bs_dump(ostream& out) const;
     
     char start_marker;
     char end_marker;
@@ -414,8 +417,6 @@ private:
     // shouldn't call bs_set or bs_insert.
     void bs_bake();
     
-    
-    
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
     // another side.
@@ -451,6 +452,7 @@ public:
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "");
+    // Get a mapping. Note that the mapping will not have its lengths filled in.
     Mapping mapping(size_t offset); // 0-based
 };
 
