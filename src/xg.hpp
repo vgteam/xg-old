@@ -61,6 +61,12 @@ public:
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
+    
+    // Don't let anyone copy or assign, because we own objects pointed to by
+    // pointers. TODO: use unique_ptr or actually copy owned XGPaths.
+    XG(const XG& other) = delete;
+    XG& operator=(const XG& other) = delete;
+    
     void from_stream(istream& in, bool validate_graph = false,
         bool print_graph = false, bool store_threads = false,
         bool is_sorted_dag = false);

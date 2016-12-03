@@ -95,6 +95,11 @@ XG::XG(function<void(function<void(Graph&)>)> get_chunks)
 }
 
 XG::~XG(void) {
+    // Clean up any created XGPaths
+    while (!paths.empty()) {
+        delete paths.back();
+        paths.pop_back();
+    }
 }
 
 void XG::load(istream& in) {
