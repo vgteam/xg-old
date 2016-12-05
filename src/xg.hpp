@@ -123,7 +123,7 @@ public:
     size_t edge_rank_as_entity(const Edge& edge) const;
     // Given an edge which is in the graph in some orientation, return the edge
     // oriented as it actually appears.
-    Edge canonicalize(const Edge& edge);
+    Edge canonicalize(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
     /// Returns true if the given edge is present in the given orientation, and false otherwise.

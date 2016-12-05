@@ -448,7 +448,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
             }
         }
         for (int i = 0; i < graph.edge_size(); ++i) {
-            const Edge& e = graph.edge(i);
+            // Canonicalize every edge, so only canonical edges are in the index.
+            Edge e = canonicalize(graph.edge(i));
             if (from_to.find(make_side(e.from(), e.from_start())) == from_to.end()
                 || from_to[make_side(e.from(), e.from_start())].count(make_side(e.to(), e.to_end())) == 0) {
                 ++edge_count;
@@ -1314,35 +1315,20 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
         }
     }
     // Otherwise the edge doesn't exist.
-    return numeric_limits<size_t>.max();
+    return numeric_limits<size_t>::max();
 }
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
-        int64_t rank = edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
-        // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
-        int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else {
-        // Otherwise the edge doesn't exist.
-        return numeric_limits<size_t>.max();
-    }
+    auto fixed = canonicalize(edge);
+    return edge_rank_as_entity(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
 }
 
-Edge XG::canonicalize(const Edge& edge) {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
+Edge XG::canonicalize(const Edge& edge) const {
+    if (edge.from() < edge.to() || edge.from() == edge.to() && edge.from_start() <= edge.to_end()) {
+        // Sides are in order
         return edge;
     } else {
+        // Sides are out of order, so swap them
         return make_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
     }
 }
@@ -2235,7 +2221,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         // We have to store the fact that we traversed this edge in the specified direction in our succinct storage. 
         
         // Find the edge as it actually appears in the graph.
-        // TODO: make sure it exists.
         Edge canonical = canonicalize(make_edge(node_id, from_start, next_node_id, to_end));
         
         // We're departing along this edge, so our orientation cares about
