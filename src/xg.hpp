@@ -116,14 +116,17 @@ public:
     vector<Edge> edges_on_start(int64_t id) const;
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
+    /// Get the rank of the edge, or numeric_limits<size_t>.max() if no such edge exists.
+    /// Edge must be specified in canonical orientation.
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
-    // Supports the edge articulated in any orientation. Edge must exist.
+    /// Supports the edge articulated in any orientation.
     size_t edge_rank_as_entity(const Edge& edge) const;
     // Given an edge which is in the graph in some orientation, return the edge
     // oriented as it actually appears.
     Edge canonicalize(const Edge& edge);
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
+    /// Returns true if the given edge is present in the given orientation, and false otherwise.
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
 
     // Pull out the path with the given name.

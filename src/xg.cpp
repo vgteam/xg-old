@@ -1313,8 +1313,8 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
             return i+1;
         }
     }
-    cerr << "[xg] error: edge does not exist: " << id1 << " " << from_start << " -> " << id2 << " " << to_end << endl;
-    assert(false);
+    // Otherwise the edge doesn't exist.
+    return numeric_limits<size_t>.max();
 }
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
@@ -1334,8 +1334,8 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
         assert(!entity_is_node(rank));
         return rank;
     } else {
-        // Someone gave us an edge that doesn't exist.
-        assert(false);
+        // Otherwise the edge doesn't exist.
+        return numeric_limits<size_t>.max();
     }
 }
 
