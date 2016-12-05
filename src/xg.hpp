@@ -62,10 +62,12 @@ public:
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
     
-    // Don't let anyone copy or assign, because we own objects pointed to by
-    // pointers. TODO: use unique_ptr or actually copy owned XGPaths.
+    // We cannot move, assign, or copy until we add code to point SDSL suppots
+    // at the new addresses for their vectors.
     XG(const XG& other) = delete;
+    XG(XG&& other) = delete;
     XG& operator=(const XG& other) = delete;
+    XG& operator=(XG&& other) = delete;
     
     void from_stream(istream& in, bool validate_graph = false,
         bool print_graph = false, bool store_threads = false,

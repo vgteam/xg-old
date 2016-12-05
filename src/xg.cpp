@@ -1313,7 +1313,7 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
             return i+1;
         }
     }
-    //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
+    cerr << "[xg] error: edge does not exist: " << id1 << " " << from_start << " -> " << id2 << " " << to_end << endl;
     assert(false);
 }
 
