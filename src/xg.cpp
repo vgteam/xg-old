@@ -1288,6 +1288,11 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     return false;
 }
 
+bool XG::has_edge(const Edge& edge) const {
+    auto fixed = canonicalize(edge);
+    return has_edge(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
+}
+
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
@@ -1324,12 +1329,15 @@ size_t XG::edge_rank_as_entity(const Edge& edge) const {
 }
 
 Edge XG::canonicalize(const Edge& edge) const {
-    if (edge.from() < edge.to() || edge.from() == edge.to() && edge.from_start() <= edge.to_end()) {
-        // Sides are in order
-        return edge;
-    } else {
-        // Sides are out of order, so swap them
+    // An edge is canonical if it is not doubly reversing and, if it is singly
+    // reversing, the lower side comes first.
+    // XG can't actually handle doubly reversing edges, I think.
+
+    if ((edge.from_start() && edge.to_end()) || ((edge.from_start() || edge.to_end()) && edge.from() > edge.to())) {
+        // Doubly reversing or (singly reversing and in the wrong direction)
         return make_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+    } else {
+        return edge;
     }
 }
 
@@ -2198,6 +2206,8 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
+#define VERBOSE_DEBUG
+
 void XG::insert_threads_into_dag(const vector<thread_t>& t) {
 
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
@@ -2225,7 +2235,18 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         
         // We're departing along this edge, so our orientation cares about
         // whether we have to take the edge forward or backward when departing.
-        int64_t edge_orientation_number = (edge_rank_as_entity(canonical) - 1) * 2 +
+        auto edge_rank = edge_rank_as_entity(canonical);
+        
+        if (edge_rank == numeric_limits<size_t>::max()) {
+            cerr << "Want " << canonical.from() << " " << canonical.from_start() << " " << canonical.to() << " " << canonical.to_end() << endl;
+            cerr << "Have: " << endl;
+            for (auto& other : edges_of(node_id)) {
+                cerr << other.from() << " " << other.from_start() << " " << other.to() << " " << other.to_end() << endl;
+            }
+        }
+        
+        assert(edge_rank != numeric_limits<size_t>::max()); // We must actually have the edge
+        int64_t edge_orientation_number = (edge_rank - 1) * 2 +
             depart_by_reverse(canonical, node_id, from_start);
                 
 #ifdef VERBOSE_DEBUG
@@ -2433,6 +2454,8 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
     
     
 }
+
+#undef VERBOSE_DEBUG
 
 void XG::insert_thread(const thread_t& t) {
     // We're going to insert this thread
@@ -2646,7 +2669,9 @@ auto XG::extract_threads() const -> list<thread_t> {
             // Skip it if no threads start at it
             continue;
         }
-        
+
+#define debug
+#define VERBOSE_DEBUG    
         for(int64_t j = 0; j < ts_iv[i]; j++) {
             // For every thread starting there
       
@@ -2727,6 +2752,8 @@ auto XG::extract_threads() const -> list<thread_t> {
             
         }
     }
+#undef debug
+#undef VERBOSE_DEBUG
     
     return found;
 }

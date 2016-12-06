@@ -128,6 +128,8 @@ public:
     size_t entity_rank_as_node_rank(size_t rank) const;
     /// Returns true if the given edge is present in the given orientation, and false otherwise.
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
+    /// Returns true if the given edge is present in either orientation, and false otherwise.
+    bool has_edge(const Edge& edge) const;
 
     // Pull out the path with the given name.
     Path path(const string& name) const;
