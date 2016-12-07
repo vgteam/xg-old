@@ -458,9 +458,9 @@ public:
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
-                     std::string name = "");
+                     std::string name = "") const;
     // Get a mapping. Note that the mapping will not have its lengths filled in.
-    Mapping mapping(size_t offset); // 0-based
+    Mapping mapping(size_t offset) const; // 0-based
 };
 
 

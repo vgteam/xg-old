@@ -182,7 +182,7 @@ void XGPath::load(istream& in) {
 
 size_t XGPath::serialize(std::ostream& out,
                          sdsl::structure_tree_node* v,
-                         std::string name) {
+                         std::string name) const {
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
     size_t written = 0;
     written += members.serialize(out, child, "path_membership_" + name);
@@ -317,7 +317,7 @@ XGPath::XGPath(const string& path_name,
     util::assign(offsets_select, bit_vector::select_1_type(&offsets));
 }
 
-Mapping XGPath::mapping(size_t offset) {
+Mapping XGPath::mapping(size_t offset) const {
     // TODO actually store the "real" mapping
     Mapping m;
     // store the starting position and series of edits
@@ -1345,7 +1345,7 @@ Path XG::path(const string& name) const {
     // Extract a whole path by name
     
     // First find the XGPath we're using to store it.
-    XGPath& xgpath = *(paths[path_rank(name)-1]);
+    const XGPath& xgpath = *(paths[path_rank(name)-1]);
     
     // Make a new path to fill in
     Path to_return;
@@ -1797,7 +1797,7 @@ size_t XG::path_length(size_t rank) const {
 int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
 
     // find our node in the members bit vector of the xgpath
-    XGPath* path = paths[path_rank - 1];
+    const XGPath* path = paths[path_rank - 1];
     size_t node_rank = id_to_rank(id);
     size_t entity_rank = node_rank_as_entity(node_rank);
     // if it's a path member, we're done
@@ -2386,8 +2386,8 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                     // Figure out the rank of the edge we need to take to get
                     // there. Note that we need to make sure we can handle going
                     // forward and backward over edges.
-                    size_t next_edge_rank = edge_rank_as_entity(make_edge(node_id, node_is_reverse,
-                        next_node_id, next_is_reverse));
+                    Edge canonical = canonicalize(make_edge(node_id, node_is_reverse, next_node_id, next_is_reverse));
+                    size_t next_edge_rank = edge_rank_as_entity(canonical);
                     
                     // Look up what local edge number that edge gets and say we follow it.
                     destinations.push_back(edge_rank_to_local_edge_number.at(next_edge_rank));
