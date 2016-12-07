@@ -445,6 +445,13 @@ public:
     // Path names are stored in the XG object, in a compressed fashion, and are
     // not duplicated here.
     
+    // These contain rank and select supports and so cannot move or be copied
+    // without code to update them.
+    XGPath(const XGPath& other) = delete;
+    XGPath(XGPath&& other) = delete;
+    XGPath& operator=(const XGPath& other) = delete;
+    XGPath& operator=(XGPath&& other) = delete;
+    
     sd_vector<> members;
     rank_support_sd<1> members_rank;
     select_support_sd<1> members_select;
