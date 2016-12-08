@@ -62,10 +62,12 @@ public:
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
     
-    // Don't let anyone copy or assign, because we own objects pointed to by
-    // pointers. TODO: use unique_ptr or actually copy owned XGPaths.
+    // We cannot move, assign, or copy until we add code to point SDSL suppots
+    // at the new addresses for their vectors.
     XG(const XG& other) = delete;
+    XG(XG&& other) = delete;
     XG& operator=(const XG& other) = delete;
+    XG& operator=(XG&& other) = delete;
     
     void from_stream(istream& in, bool validate_graph = false,
         bool print_graph = false, bool store_threads = false,
@@ -114,15 +116,20 @@ public:
     vector<Edge> edges_on_start(int64_t id) const;
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
+    /// Get the rank of the edge, or numeric_limits<size_t>.max() if no such edge exists.
+    /// Edge must be specified in canonical orientation.
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
-    // Supports the edge articulated in any orientation. Edge must exist.
+    /// Supports the edge articulated in any orientation.
     size_t edge_rank_as_entity(const Edge& edge) const;
     // Given an edge which is in the graph in some orientation, return the edge
     // oriented as it actually appears.
-    Edge canonicalize(const Edge& edge);
+    Edge canonicalize(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
+    /// Returns true if the given edge is present in the given orientation, and false otherwise.
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
+    /// Returns true if the given edge is present in either orientation, and false otherwise.
+    bool has_edge(const Edge& edge) const;
 
     // Pull out the path with the given name.
     Path path(const string& name) const;
@@ -438,6 +445,13 @@ public:
     // Path names are stored in the XG object, in a compressed fashion, and are
     // not duplicated here.
     
+    // These contain rank and select supports and so cannot move or be copied
+    // without code to update them.
+    XGPath(const XGPath& other) = delete;
+    XGPath(XGPath&& other) = delete;
+    XGPath& operator=(const XGPath& other) = delete;
+    XGPath& operator=(XGPath&& other) = delete;
+    
     sd_vector<> members;
     rank_support_sd<1> members_rank;
     select_support_sd<1> members_select;
@@ -451,9 +465,9 @@ public:
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
-                     std::string name = "");
+                     std::string name = "") const;
     // Get a mapping. Note that the mapping will not have its lengths filled in.
-    Mapping mapping(size_t offset); // 0-based
+    Mapping mapping(size_t offset) const; // 0-based
 };
 
 

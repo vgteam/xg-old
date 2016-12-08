@@ -182,7 +182,7 @@ void XGPath::load(istream& in) {
 
 size_t XGPath::serialize(std::ostream& out,
                          sdsl::structure_tree_node* v,
-                         std::string name) {
+                         std::string name) const {
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
     size_t written = 0;
     written += members.serialize(out, child, "path_membership_" + name);
@@ -317,7 +317,7 @@ XGPath::XGPath(const string& path_name,
     util::assign(offsets_select, bit_vector::select_1_type(&offsets));
 }
 
-Mapping XGPath::mapping(size_t offset) {
+Mapping XGPath::mapping(size_t offset) const {
     // TODO actually store the "real" mapping
     Mapping m;
     // store the starting position and series of edits
@@ -448,7 +448,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
             }
         }
         for (int i = 0; i < graph.edge_size(); ++i) {
-            const Edge& e = graph.edge(i);
+            // Canonicalize every edge, so only canonical edges are in the index.
+            Edge e = canonicalize(graph.edge(i));
             if (from_to.find(make_side(e.from(), e.from_start())) == from_to.end()
                 || from_to[make_side(e.from(), e.from_start())].count(make_side(e.to(), e.to_end())) == 0) {
                 ++edge_count;
@@ -1287,6 +1288,11 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     return false;
 }
 
+bool XG::has_edge(const Edge& edge) const {
+    auto fixed = canonicalize(edge);
+    return has_edge(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
+}
+
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
@@ -1313,37 +1319,25 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
             return i+1;
         }
     }
-    //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
-    assert(false);
+    // Otherwise the edge doesn't exist.
+    return numeric_limits<size_t>::max();
 }
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
-        int64_t rank = edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
-        // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
-        int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else {
-        // Someone gave us an edge that doesn't exist.
-        assert(false);
-    }
+    auto fixed = canonicalize(edge);
+    return edge_rank_as_entity(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
 }
 
-Edge XG::canonicalize(const Edge& edge) {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
-        return edge;
-    } else {
+Edge XG::canonicalize(const Edge& edge) const {
+    // An edge is canonical if it is not doubly reversing and, if it is singly
+    // reversing, the lower side comes first.
+    // XG can't actually handle doubly reversing edges, I think.
+
+    if ((edge.from_start() && edge.to_end()) || ((edge.from_start() || edge.to_end()) && edge.from() > edge.to())) {
+        // Doubly reversing or (singly reversing and in the wrong direction)
         return make_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+    } else {
+        return edge;
     }
 }
 
@@ -1351,7 +1345,7 @@ Path XG::path(const string& name) const {
     // Extract a whole path by name
     
     // First find the XGPath we're using to store it.
-    XGPath& xgpath = *(paths[path_rank(name)-1]);
+    const XGPath& xgpath = *(paths[path_rank(name)-1]);
     
     // Make a new path to fill in
     Path to_return;
@@ -1803,7 +1797,7 @@ size_t XG::path_length(size_t rank) const {
 int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
 
     // find our node in the members bit vector of the xgpath
-    XGPath* path = paths[path_rank - 1];
+    const XGPath* path = paths[path_rank - 1];
     size_t node_rank = id_to_rank(id);
     size_t entity_rank = node_rank_as_entity(node_rank);
     // if it's a path member, we're done
@@ -2235,12 +2229,13 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         // We have to store the fact that we traversed this edge in the specified direction in our succinct storage. 
         
         // Find the edge as it actually appears in the graph.
-        // TODO: make sure it exists.
         Edge canonical = canonicalize(make_edge(node_id, from_start, next_node_id, to_end));
         
         // We're departing along this edge, so our orientation cares about
         // whether we have to take the edge forward or backward when departing.
-        int64_t edge_orientation_number = (edge_rank_as_entity(canonical) - 1) * 2 +
+        auto edge_rank = edge_rank_as_entity(canonical);
+        assert(edge_rank != numeric_limits<size_t>::max()); // We must actually have the edge
+        int64_t edge_orientation_number = (edge_rank - 1) * 2 +
             depart_by_reverse(canonical, node_id, from_start);
                 
 #ifdef VERBOSE_DEBUG
@@ -2391,8 +2386,8 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                     // Figure out the rank of the edge we need to take to get
                     // there. Note that we need to make sure we can handle going
                     // forward and backward over edges.
-                    size_t next_edge_rank = edge_rank_as_entity(make_edge(node_id, node_is_reverse,
-                        next_node_id, next_is_reverse));
+                    Edge canonical = canonicalize(make_edge(node_id, node_is_reverse, next_node_id, next_is_reverse));
+                    size_t next_edge_rank = edge_rank_as_entity(canonical);
                     
                     // Look up what local edge number that edge gets and say we follow it.
                     destinations.push_back(edge_rank_to_local_edge_number.at(next_edge_rank));
@@ -2661,7 +2656,7 @@ auto XG::extract_threads() const -> list<thread_t> {
             // Skip it if no threads start at it
             continue;
         }
-        
+
         for(int64_t j = 0; j < ts_iv[i]; j++) {
             // For every thread starting there
       
