@@ -249,6 +249,7 @@ public:
     // Extract a particular thread by name. Name may not be empty.
     // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
     thread_t extract_thread(const string& name) const;
+    thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
     // Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
