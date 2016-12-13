@@ -3080,6 +3080,8 @@ XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
     // threads that start there.
     state.range_start = 0;
     state.range_end = ts_iv[state.current_side];
+    
+    return state;
 }
 
 XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
@@ -3096,6 +3098,8 @@ XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
     // number of threads total on the node.
     state.range_start = ts_iv[state.current_side];
     state.range_end = h_iv[state.current_side];
+    
+    return state;
 }
 
 
