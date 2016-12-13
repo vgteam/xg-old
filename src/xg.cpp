@@ -3215,3 +3215,96 @@ void extract_pos_substr(const string& pos_str, int64_t& id, bool& is_rev, size_t
 }
 
 }
+
+int64_t XG::node_height(XG::ThreadMapping node) const {
+  return h_iv[(node_rank_as_entity(node.node_id) - 1) * 2 + node.is_reverse];
+}
+
+int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side, vector<Edge>& edges, vector<Edge>& edges_out) const {
+    // Given that we were at visit_offset on the current side, where will we be
+    // on the new side?
+
+    // What will the new visit offset be?
+    int64_t new_visit_offset = 0;
+
+    // Work out where we're going as a node and orientation
+    int64_t new_node_id = rank_to_id(new_side / 2);
+    bool new_node_is_reverse = new_side % 2;
+
+    // Work out what edges are going into the place we're going into.
+
+    // Work out what node and orientation we came from
+    int64_t old_node_id = rank_to_id(current_side / 2);
+    bool old_node_is_reverse = current_side % 2;
+
+    // What edge are we following
+    Edge edge_taken = make_edge(old_node_id, old_node_is_reverse, new_node_id, new_node_is_reverse);
+
+    // Make sure we find it
+    bool edge_found = false;
+
+    for(auto& edge : edges) {
+        // Look at every edge in order.
+
+        if(edges_equivalent(edge, edge_taken)) {
+            // If we found the edge we're taking, break.
+            edge_found = true;
+            break;
+        }
+
+        // Otherwise add in the threads on this edge to the offset
+
+        // Get the orientation number for this edge (which is *not* the edge we
+        // are following and so doesn't involve old_node_anything). We only
+        // treat it as reverse if the reverse direction is the only direction we
+        // can take to get here.
+        int64_t edge_orientation_number = ((edge_rank_as_entity(edge) - 1) * 2) + arrive_by_reverse(edge, new_node_id, new_node_is_reverse);
+
+        int64_t contribution = h_iv[edge_orientation_number];
+#ifdef VERBOSE_DEBUG
+        cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << " at " << edge_orientation_number << ") + ";
+#endif
+        new_visit_offset += contribution;
+    }
+
+    assert(edge_found);
+
+    // What edge out of all the edges we can take are we taking?
+    int64_t edge_taken_index = -1;
+
+    // Look at the edges we could have taken next
+
+    for(int64_t i = 0; i < edges_out.size(); i++) {
+        if(edges_equivalent(edges_out[i], edge_taken)) {
+            // i is the index of the edge we took, of the edges available to us.
+            edge_taken_index = i;
+            break;
+        }
+    }
+
+    assert(edge_taken_index != -1);
+
+    // Get the rank in B_s[] for our current side of our visit offset among
+    // B_s[] entries pointing to the new node and add that in. Make sure to +2
+    // to account for the nulls and separators.
+    int64_t contribution = bs_rank(current_side, visit_offset, edge_taken_index + 2);
+#ifdef VERBOSE_DEBUG
+    cerr << contribution << " (via this edge) + ";
+#endif
+    new_visit_offset += contribution;
+
+    // Get the number of threads starting at the new side and add that in.
+    contribution = ts_iv[new_side];
+#ifdef VERBOSE_DEBUG
+    cerr << contribution << " (starting here) = ";
+#endif
+    new_visit_offset += contribution;
+#ifdef VERBOSE_DEBUG
+    cerr << new_visit_offset << endl;
+#endif
+
+    // Now we know where it actually ends up: after all the threads that start,
+    // all the threads that come in via earlier edges, and all the previous
+    // threads going there that come via this edge.
+    return new_visit_offset;
+}

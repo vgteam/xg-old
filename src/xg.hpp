@@ -99,6 +99,13 @@ public:
     size_t node_count;
     size_t edge_count;
     size_t path_count;
+    
+    // We need the w function, which we call the "where_to" function. It tells
+    // you, from a given visit at a given side, what visit offset if you go to
+    // another side.
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side,
+      vector<Edge>& edges, vector<Edge>& edges_out) const;
 
     size_t id_to_rank(int64_t id) const;
     int64_t rank_to_id(size_t rank) const;
@@ -218,6 +225,8 @@ public:
         int64_t node_id;
         bool is_reverse;
     };
+    
+    int64_t node_height(ThreadMapping node) const;
     
     // We define a thread as just a vector of these things, instead of a bulky
     // Path.
@@ -421,13 +430,8 @@ private:
     void bs_insert(int64_t side, int64_t offset, destination_t value);
     
     // Prepare the B_s array data structures for query. After you call this, you
-    // shouldn't call bs_set or bs_insert.
+    // shouldn't call bset or bs_insert.
     void bs_bake();
-    
-    // We need the w function, which we call the "where_to" function. It tells
-    // you, from a given visit at a given side, what visit offset if you go to
-    // another side.
-    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
 };
 
 class XGPath {
