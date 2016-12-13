@@ -2299,9 +2299,9 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
-using thread_t = vector<ThreadMapping>;
+using thread_t = vector<XG::ThreadMapping>;
 
-thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset = 0, int64_t max_length = 0) {
+thread_t XG::extract_thread(xg::XG::ThreadMapping node, int64_t offset = 0, int64_t max_length = 0) {
   thread_t path;
   int64_t side = (node.node_id)*2 + node.is_reverse;
   bool continue_search = true;
