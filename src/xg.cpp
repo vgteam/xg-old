@@ -3200,6 +3200,48 @@ void XG::extend_search(ThreadSearchState& state, const thread_t& t) const {
     }
 }
 
+void XG::extend_search(ThreadSearchState& state, const ThreadMapping& t) const {
+    // Just make it into a temporary vector
+    extend_search(state, thread_t{t});
+}
+
+XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
+    // We need to select just the threads starting at this node with this
+    // mapping, rather than those coming in from elsewhere.
+    
+    // Make a search state with nothing searched
+    ThreadSearchState state;
+    
+    // Say we've searched this ThreadMapping's side.    
+    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    
+    // Threads starting at a node come first, so select from 0 to the number of
+    // threads that start there.
+    state.range_start = 0;
+    state.range_end = ts_iv[state.current_side];
+    
+    return state;
+}
+
+XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
+    // We need to select just the threads coming in from elsewhere, and not
+    // those starting here.
+    
+    // Make a search state with nothing searched
+    ThreadSearchState state;
+    
+    // Say we've searched this ThreadMapping's side.    
+    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    
+    // Threads starting at a node come first, so select from past them to the
+    // number of threads total on the node.
+    state.range_start = ts_iv[state.current_side];
+    state.range_end = h_iv[state.current_side];
+    
+    return state;
+}
+
+
 size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
     sdsl::structure_tree_node* parent, const std::string name) {
 #if GPBWT_MODE == MODE_SDSL
