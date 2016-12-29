@@ -989,7 +989,7 @@ void XG::build(map<id_t, string>& node_label,
                 assert(dir_bv[in_path] == rev);
                 Node n = node(id);
                 //cerr << id << " in " << name << endl;
-                auto p = node_positions_in_path(id, name);
+                auto p = position_in_paths(id, name);
                 assert(std::find(p.begin(), p.end(), pos) != p.end());
                 for (size_t k = 0; k < n.sequence().size(); ++k) {
                     //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
@@ -1886,8 +1886,8 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
     }
 
     // find our positions on the path
-    vector<size_t> positions1 = node_positions_in_path(next1, name);
-    vector<size_t> positions2 = node_positions_in_path(prev2, name);
+    vector<size_t> positions1 = position_in_paths(next1, name);
+    vector<size_t> positions2 = position_in_paths(prev2, name);
     // use the last node1 position and first node2 position. 
     int64_t pos1 = (int64_t)positions1.back();
     int64_t pos2 = (int64_t)positions2[0];
@@ -2025,11 +2025,11 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, size_t rank) const {
     return ranks;
 }
 
-vector<size_t> XG::node_positions_in_path(int64_t id, const string& name) const {
-    return node_positions_in_path(id, path_rank(name));
+vector<size_t> XG::position_in_paths(int64_t id, const string& name) const {
+    return position_in_paths(id, path_rank(name));
 }
 
-vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
+vector<size_t> XG::position_in_paths(int64_t id, size_t rank) const {
     auto& path = *paths[rank-1];
     vector<size_t> pos_in_path;
     for (auto i : node_ranks_in_path(id, rank)) {
@@ -2038,19 +2038,58 @@ vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
     return pos_in_path;
 }
 
-map<string, vector<size_t> > XG::node_positions_in_paths(int64_t id, bool is_rev) const {
+map<string, vector<size_t> > XG::position_in_paths(int64_t id, bool is_rev, size_t offset) const {
     map<string, vector<size_t> > positions;
     for (auto& prank : paths_of_node(id)) {
         auto& path = *paths[prank-1];
         auto& pos_in_path = positions[path_name(prank)];
         for (auto i : node_ranks_in_path(id, prank)) {
-            size_t pos = (is_rev ?
-                          path_length(prank) - path.positions[i] - node_length(id)
-                          : path.positions[i]);
+            size_t pos = offset + (is_rev ?
+                                   path_length(prank) - path.positions[i] - node_length(id)
+                                   : path.positions[i]);
             pos_in_path.push_back(pos);
         }
     }
     return positions;
+}
+
+map<string, vector<size_t> > XG::distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                                                   int64_t id2, bool is_rev2, size_t offset2) const {
+    auto pos1 = position_in_paths(id1, is_rev1, offset1);
+    auto pos2 = position_in_paths(id2, is_rev2, offset2);
+    map<string, vector<size_t> > dist;
+    // position in a path is undefined in inversion
+    if (is_rev1 != is_rev2) {
+        return dist;
+    }
+    for (auto& c1 : pos1) {
+        auto c2 = pos2.find(c1.first);
+        if (c2 != pos2.end()) {
+            auto& d = dist[c1.first];
+            // distances are a cross of the points
+            for (auto o1 : c1.second) {
+                for (auto o2 : c2->second) {
+                    d.push_back(o1-o2);
+                }
+            }
+        }
+    }
+    return dist;
+}
+
+int XG::min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                              int64_t id2, bool is_rev2, size_t offset2) const {
+    auto dist = distance_in_paths(id1, is_rev1, offset1,
+                                  id2, is_rev2, offset2);
+    int min_dist = std::numeric_limits<int>::max();
+    for (auto& c : dist) {
+        for (auto& o : c.second) {
+            if (abs(o) < abs(min_dist)) {
+                min_dist = o;
+            }
+        }
+    }
+    return min_dist;
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
