@@ -989,7 +989,7 @@ void XG::build(map<id_t, string>& node_label,
                 assert(dir_bv[in_path] == rev);
                 Node n = node(id);
                 //cerr << id << " in " << name << endl;
-                auto p = position_in_paths(id, name);
+                auto p = position_in_path(id, name);
                 assert(std::find(p.begin(), p.end(), pos) != p.end());
                 for (size_t k = 0; k < n.sequence().size(); ++k) {
                     //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
@@ -1886,8 +1886,8 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
     }
 
     // find our positions on the path
-    vector<size_t> positions1 = position_in_paths(next1, name);
-    vector<size_t> positions2 = position_in_paths(prev2, name);
+    vector<size_t> positions1 = position_in_path(next1, name);
+    vector<size_t> positions2 = position_in_path(prev2, name);
     // use the last node1 position and first node2 position. 
     int64_t pos1 = (int64_t)positions1.back();
     int64_t pos2 = (int64_t)positions2[0];
