@@ -2025,11 +2025,11 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, size_t rank) const {
     return ranks;
 }
 
-vector<size_t> XG::position_in_paths(int64_t id, const string& name) const {
-    return position_in_paths(id, path_rank(name));
+vector<size_t> XG::position_in_path(int64_t id, const string& name) const {
+    return position_in_path(id, path_rank(name));
 }
 
-vector<size_t> XG::position_in_paths(int64_t id, size_t rank) const {
+vector<size_t> XG::position_in_path(int64_t id, size_t rank) const {
     auto& path = *paths[rank-1];
     vector<size_t> pos_in_path;
     for (auto i : node_ranks_in_path(id, rank)) {
