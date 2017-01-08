@@ -1061,6 +1061,10 @@ void XG::build(map<id_t, string>& node_label,
     }
 }
 
+const uint64_t* XG::sequence_data(void) const {
+    return s_iv.data();
+}
+
 Node XG::node(int64_t id) const {
     Node n;
     n.set_id(id);

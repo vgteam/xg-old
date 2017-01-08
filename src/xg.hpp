@@ -100,6 +100,7 @@ public:
     size_t edge_count;
     size_t path_count;
 
+    const uint64_t* sequence_data(void) const;
     size_t id_to_rank(int64_t id) const;
     int64_t rank_to_id(size_t rank) const;
     size_t max_node_rank(void) const;
