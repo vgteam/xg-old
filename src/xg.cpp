@@ -1065,6 +1065,10 @@ const uint64_t* XG::sequence_data(void) const {
     return s_iv.data();
 }
 
+const size_t XG::sequence_bit_size(void) const {
+    return s_iv.bit_size();
+}
+
 Node XG::node(int64_t id) const {
     Node n;
     n.set_id(id);
