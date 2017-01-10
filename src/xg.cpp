@@ -1952,7 +1952,9 @@ int64_t XG::min_approx_path_distance(const vector<string>& names,
     return -1;
 }
 
-void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
+void XG::for_path_range(const string& name, int64_t start, int64_t stop,
+                        function<void(int64_t)> lambda, bool is_rev) const {
+
     // what is the node at the start, and at the end
     auto& path = *paths[path_rank(name)-1];
     size_t plen = path.offsets.size();
@@ -1965,24 +1967,35 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, boo
     }
     size_t pr1 = path.offsets_rank(start+1)-1;
     size_t pr2 = path.offsets_rank(stop+1)-1;
-    set<int64_t> nodes;
-    set<pair<side_t, side_t> > edges;
+
     // Grab the IDs visited in order along the path
     auto& pi_wt = path.ids;
     for (size_t i = pr1; i <= pr2; ++i) {
         // For all the visits along this section of path, grab the node being visited and all its edges.
         int64_t id = pi_wt[i];
-        nodes.insert(id);
-        for (auto& e : edges_from(id)) {
-            edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
-        }
-        for (auto& e : edges_to(id)) {
-            edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
-        }
+        lambda(id);
     }
+}
+
+void XG::get_path_range(const string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
+
+    set<int64_t> nodes;
+    set<pair<side_t, side_t> > edges;
+
+    for_path_range(name, start, stop, [&](int64_t id) {
+            nodes.insert(id);
+            for (auto& e : edges_from(id)) {
+                edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
+            }
+            for (auto& e : edges_to(id)) {
+                edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
+            }
+        }, is_rev);
+
     for (auto& n : nodes) {
         *g.add_node() = node(n);
     }
+    
     map<string, Path*> local_paths;
     for (auto& n : nodes) {
         for (auto& m : node_mappings(n)) {
@@ -2108,6 +2121,12 @@ int64_t XG::node_at_path_position(const string& name, size_t pos) const {
 Mapping XG::mapping_at_path_position(const string& name, size_t pos) const {
     size_t p = path_rank(name)-1;
     return paths[p]->mapping(paths[p]->offsets_rank(pos+1)-1);
+}
+
+size_t XG::node_start_at_path_position(const string& name, size_t pos) const {
+    size_t p = path_rank(name)-1;
+    size_t position_rank = paths[p]->offsets_rank(pos+1);
+    return paths[p]->offsets_select(position_rank);
 }
 
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse) {
