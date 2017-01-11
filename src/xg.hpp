@@ -475,9 +475,9 @@ public:
     XGPath& operator=(const XGPath& other) = delete;
     XGPath& operator=(XGPath&& other) = delete;
     
-    sd_vector<> members;
-    rank_support_sd<1> members_rank;
-    select_support_sd<1> members_select;
+    rrr_vector<> members;
+    rrr_vector<>::rank_1_type members_rank;
+    rrr_vector<>::select_1_type members_select;
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;

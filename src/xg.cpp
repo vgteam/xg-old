@@ -186,6 +186,8 @@ size_t XGPath::serialize(std::ostream& out,
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
     size_t written = 0;
     written += members.serialize(out, child, "path_membership_" + name);
+    written += members_rank.serialize(out, child, "path_membership_rank_" + name);
+    written += members_select.serialize(out, child, "path_membership_select_" + name);
     written += ids.serialize(out, child, "path_node_ids_" + name);
     written += directions.serialize(out, child, "path_node_directions_" + name);
     written += ranks.serialize(out, child, "path_mapping_ranks_" + name);
@@ -302,7 +304,9 @@ XGPath::XGPath(const string& path_name,
         *unique_member_count_out = uniq_nodes.size() + uniq_edges.size();
     }
     // compress path membership vectors
-    util::assign(members, sd_vector<>(members_bv));
+    util::assign(members, rrr_vector<>(members_bv));
+    util::assign(members_rank, rrr_vector<>::rank_1_type(&members));
+    util::assign(members_select, rrr_vector<>::select_1_type(&members));
     // and traversal information
     util::assign(directions, sd_vector<>(directions_bv));
     // handle entity lookup structure (wavelet tree)
@@ -313,6 +317,7 @@ XGPath::XGPath(const string& path_name,
     // bit compress mapping ranks
     util::bit_compress(ranks);
 
+    // and set up rank/select dictionary on them
     util::assign(offsets_rank, rank_support_v<1>(&offsets));
     util::assign(offsets_select, bit_vector::select_1_type(&offsets));
 }
@@ -974,7 +979,7 @@ void XG::build(map<id_t, string>& node_label,
             size_t prank = path_rank(name);
             //cerr << path_name(prank) << endl;
             assert(path_name(prank) == name);
-            sd_vector<>& pe_bv = paths[prank-1]->members;
+            rrr_vector<>& pe_bv = paths[prank-1]->members;
             int_vector<>& pp_iv = paths[prank-1]->positions;
             sd_vector<>& dir_bv = paths[prank-1]->directions;
             // check each entity in the nodes is present
