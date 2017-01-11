@@ -1172,6 +1172,17 @@ int64_t XG::rank_to_id(size_t rank) const {
     return i_iv[rank-1];
 }
 
+Edge XG::edge_for_entity(size_t rank) const {
+    Edge edge;
+    if (!entity_is_node(rank)) {
+        edge.set_from(rank_to_id(t_iv[rank]));
+        edge.set_to(rank_to_id(f_iv[rank]));
+        edge.set_from_start(f_from_start_cbv[rank]);
+        edge.set_to_end(f_to_end_cbv[rank]);
+    }
+    return edge;
+}
+
 vector<Edge> XG::edges_of(int64_t id) const {
     auto e1 = edges_to(id);
     auto e2 = edges_from(id);
@@ -1831,13 +1842,15 @@ int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
     // hop to the next member
     int64_t i = path->members_select(members_rank_at_node + 1);
 
-    // sanity check that we're at a node member
-    assert(f_bv[i] == 1 && path->members[i] == 1);
-    
-    // convert from entity_rank back to node id
-    int64_t next_id = entity_rank_as_node_rank(i + 1);
+    // if we're at an edge, get the node we link to
+    if (!entity_is_node(i)) {
+        //node_rank = id_to_rank();
+        Edge edge = edge_for_entity(i);
+        return edge.to();
+    } else {
+        return rank_to_id(node_rank);
+    }
 
-    return next_id;
 }
 
 // if node is on path, return it.  otherwise, return previous node (in id space)
@@ -1865,16 +1878,16 @@ int64_t XG::prev_path_node_by_id(size_t path_rank, int64_t id) const {
     }
     // hop to the previous member
     int64_t i = path->members_select(members_rank_at_node);
-    // skip edges till we hit previous node
-    for (; i >= 0 && f_bv[i] == 0; --i);
 
-    // sanity check that we're at a node member
-    assert(i >= 0 && f_bv[i] == 1 && path->members[i] == 1);
-    
-    // convert from entity_rank back to node id
-    int64_t prev_id = entity_rank_as_node_rank(i + 1);
+    // if we're at an edge, get the node we link to
+    if (!entity_is_node(i)) {
+        //node_rank = id_to_rank();
+        Edge edge = edge_for_entity(i);
+        return edge.from();
+    } else {
+        return rank_to_id(node_rank);
+    }
 
-    return prev_id;
 }
 
 // estimate distance (in bp) between two nodes along a path.
@@ -1894,14 +1907,17 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
 
     // fail
     if (next1 == 0 || prev2 == 0) {
-        assert(false); // for now
-        return -1;
+        return numeric_limits<int64_t>::max();
     }
 
     // find our positions on the path
     vector<size_t> positions1 = position_in_path(next1, name);
     vector<size_t> positions2 = position_in_path(prev2, name);
-    // use the last node1 position and first node2 position. 
+    // use the last node1 position and first node2 position.
+    if (positions1.empty()
+        || positions2.empty()) {
+        return numeric_limits<int64_t>::max();
+    }
     int64_t pos1 = (int64_t)positions1.back();
     int64_t pos2 = (int64_t)positions2[0];
     // shift over to the right of the left node if it's unchanged, and distinct from the right node.

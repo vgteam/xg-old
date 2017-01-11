@@ -112,6 +112,7 @@ public:
     size_t node_length(int64_t id) const;
     char pos_char(int64_t id, bool is_rev, size_t off) const; // character at position
     string pos_substr(int64_t id, bool is_rev, size_t off, size_t len = 0) const; // substring in range
+    Edge edge_for_entity(size_t rank) const;
     vector<Edge> edges_of(int64_t id) const;
     vector<Edge> edges_to(int64_t id) const;
     vector<Edge> edges_from(int64_t id) const;
