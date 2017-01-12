@@ -1972,7 +1972,7 @@ int64_t XG::min_approx_path_distance(const vector<string>& names,
             auto name = path_name(i.first);
             for (auto& p1 : position_in_path(near1.first, name)) {
                 for (auto& p2 : position_in_path(near2.first, name)) {
-                    int64_t distance = abs(p1 - p2);
+                    int64_t distance = abs((int64_t)p1 - (int64_t)p2);
                     min_distance = min(distance, min_distance);
                 }
             }
