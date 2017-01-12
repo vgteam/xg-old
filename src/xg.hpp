@@ -173,6 +173,8 @@ public:
     // if node is on path, return it.  otherwise, return next node (in id space)
     // that is on path.  if none exists, return 0
     int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
+    // nearest node (in steps) that is in a path, and the paths
+    pair<int64_t, vector<size_t> > nearest_path_node(int64_t id, int max_steps = 16) const;
     // if node is on path, return it.  otherwise, return previous node (in id space)
     // that is on path.  if none exists, return 0
     int64_t prev_path_node_by_id(size_t path_rank, int64_t id) const;
@@ -182,7 +184,6 @@ public:
     int64_t approx_path_distance(const string& name, int64_t id1, int64_t id2) const;
     // like above, but find minumum over list of paths.  if names is empty, do all paths
     int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
-
 
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
@@ -373,7 +374,7 @@ private:
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
-    
+
     // Succinct thread storage
     
     // Threads are haplotype paths in the graph with no edits allowed, starting

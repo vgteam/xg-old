@@ -1816,6 +1816,32 @@ size_t XG::path_length(size_t rank) const {
     return paths[rank-1]->offsets.size();
 }
 
+pair<int64_t, vector<size_t> > XG::nearest_path_node(int64_t id, int max_steps) const {
+    set<int64_t> todo;
+    set<int64_t> seen;
+    todo.insert(id);
+    int i = 0;
+    while (!todo.empty() && i++ < max_steps) {
+        set<int64_t> next;
+        for (auto& id : todo) {
+            if (seen.count(id)) continue;
+            seen.insert(id);
+            vector<size_t> path_ids = paths_of_node(id);
+            if (!path_ids.empty()) {
+                // if we found a node on a path, return
+                return make_pair(id, path_ids);
+            } else {
+                for (auto& edge : edges_of(id)) {
+                    next.insert(edge.from());
+                    next.insert(edge.to());
+                }
+            }
+        }
+        todo = next;
+    }
+    return make_pair(id, vector<size_t>());
+}
+
 // if node is on path, return it.  otherwise, return next node (in id space)
 // that is on path.  if none exists, return 0
 int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
@@ -1933,44 +1959,26 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
 // contain the nodes when possible. 
 int64_t XG::min_approx_path_distance(const vector<string>& names,
                                      int64_t id1, int64_t id2) const {
-    vector<int64_t> min_distance(3, numeric_limits<int64_t>::max());
 
-    function<void(const string&)> lambda =[&](const string& name) {
-        int member1 = path_contains_node(name, id1) ? 1 : 0;
-        int member2 = path_contains_node(name, id2) ? 1 : 0;
-        int md_idx = member1 + member2;
-        
-        if (md_idx == 2 ||
-            (md_idx == 1 && min_distance[2] == numeric_limits<int64_t>::max()) ||
-            (md_idx == 0 && min_distance[2] == numeric_limits<int64_t>::max() &&
-             min_distance[1] == numeric_limits<int64_t>::max())) {
-            
-            int64_t dist = approx_path_distance(name, id1, id2);
-            if (dist >= 0 && dist < min_distance[md_idx]) {
-                min_distance[md_idx] = dist;
+    int64_t min_distance = numeric_limits<int64_t>::max();
+    pair<int64_t, vector<size_t> > near1 = nearest_path_node(id1);
+    pair<int64_t, vector<size_t> > near2 = nearest_path_node(id2);
+    if (near1.second.size() || near2.second.size()) {
+        map<int, size_t> paths;
+        for (auto& i : near1.second) paths[i]++;
+        for (auto& i : near2.second) paths[i]++;
+        for (auto& i : paths) {
+            if (i.second < 2) continue;
+            auto name = path_name(i.first);
+            for (auto& p1 : position_in_path(near1.first, name)) {
+                for (auto& p2 : position_in_path(near2.first, name)) {
+                    int64_t distance = abs(p1 - p2);
+                    min_distance = min(distance, min_distance);
+                }
             }
         }
-    };
-
-    if (names.size() > 1) {
-        for (const string& name : names) {
-            lambda(name);
-        }
-    } else {
-        size_t max_path_rank = this->max_path_rank();
-        for (size_t i = 1; i <= max_path_rank; ++i) {
-            lambda(path_name(i));
-        }
     }
-
-    if (min_distance[2] != numeric_limits<int64_t>::max()) {
-        return min_distance[2];
-    } else if (min_distance[1] != numeric_limits<int64_t>::max()) {
-        return min_distance[1];
-    } else if (min_distance[0] != numeric_limits<int64_t>::max()) {
-        return min_distance[0];
-    }
-    return -1;
+    return min_distance;
 }
 
 void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
