@@ -1,6 +1,8 @@
 #include "xg.hpp"
 #include "stream.hpp"
 
+#include <bitset>
+
 namespace xg {
 
 id_t side_id(const side_t& side) {
@@ -95,6 +97,11 @@ XG::XG(function<void(function<void(Graph&)>)> get_chunks)
 }
 
 XG::~XG(void) {
+    // Clean up any created XGPaths
+    while (!paths.empty()) {
+        delete paths.back();
+        paths.pop_back();
+    }
 }
 
 void XG::load(istream& in) {
@@ -175,10 +182,12 @@ void XGPath::load(istream& in) {
 
 size_t XGPath::serialize(std::ostream& out,
                          sdsl::structure_tree_node* v,
-                         std::string name) {
+                         std::string name) const {
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
     size_t written = 0;
     written += members.serialize(out, child, "path_membership_" + name);
+    written += members_rank.serialize(out, child, "path_membership_rank_" + name);
+    written += members_select.serialize(out, child, "path_membership_select_" + name);
     written += ids.serialize(out, child, "path_node_ids_" + name);
     written += directions.serialize(out, child, "path_node_directions_" + name);
     written += ranks.serialize(out, child, "path_mapping_ranks_" + name);
@@ -295,7 +304,9 @@ XGPath::XGPath(const string& path_name,
         *unique_member_count_out = uniq_nodes.size() + uniq_edges.size();
     }
     // compress path membership vectors
-    util::assign(members, sd_vector<>(members_bv));
+    util::assign(members, rrr_vector<>(members_bv));
+    util::assign(members_rank, rrr_vector<>::rank_1_type(&members));
+    util::assign(members_select, rrr_vector<>::select_1_type(&members));
     // and traversal information
     util::assign(directions, sd_vector<>(directions_bv));
     // handle entity lookup structure (wavelet tree)
@@ -306,11 +317,12 @@ XGPath::XGPath(const string& path_name,
     // bit compress mapping ranks
     util::bit_compress(ranks);
 
+    // and set up rank/select dictionary on them
     util::assign(offsets_rank, rank_support_v<1>(&offsets));
     util::assign(offsets_select, bit_vector::select_1_type(&offsets));
 }
 
-Mapping XGPath::mapping(size_t offset) {
+Mapping XGPath::mapping(size_t offset) const {
     // TODO actually store the "real" mapping
     Mapping m;
     // store the starting position and series of edits
@@ -441,7 +453,8 @@ void XG::from_callback(function<void(function<void(Graph&)>)> get_chunks,
             }
         }
         for (int i = 0; i < graph.edge_size(); ++i) {
-            const Edge& e = graph.edge(i);
+            // Canonicalize every edge, so only canonical edges are in the index.
+            Edge e = canonicalize(graph.edge(i));
             if (from_to.find(make_side(e.from(), e.from_start())) == from_to.end()
                 || from_to[make_side(e.from(), e.from_start())].count(make_side(e.to(), e.to_end())) == 0) {
                 ++edge_count;
@@ -966,7 +979,7 @@ void XG::build(map<id_t, string>& node_label,
             size_t prank = path_rank(name);
             //cerr << path_name(prank) << endl;
             assert(path_name(prank) == name);
-            sd_vector<>& pe_bv = paths[prank-1]->members;
+            rrr_vector<>& pe_bv = paths[prank-1]->members;
             int_vector<>& pp_iv = paths[prank-1]->positions;
             sd_vector<>& dir_bv = paths[prank-1]->directions;
             // check each entity in the nodes is present
@@ -981,7 +994,7 @@ void XG::build(map<id_t, string>& node_label,
                 assert(dir_bv[in_path] == rev);
                 Node n = node(id);
                 //cerr << id << " in " << name << endl;
-                auto p = node_positions_in_path(id, name);
+                auto p = position_in_path(id, name);
                 assert(std::find(p.begin(), p.end(), pos) != p.end());
                 for (size_t k = 0; k < n.sequence().size(); ++k) {
                     //cerr << "id " << id << " ==? " << node_at_path_position(name, pos+k) << endl;
@@ -1051,6 +1064,14 @@ void XG::build(map<id_t, string>& node_label,
 
         cerr << "graph ok" << endl;
     }
+}
+
+const uint64_t* XG::sequence_data(void) const {
+    return s_iv.data();
+}
+
+const size_t XG::sequence_bit_size(void) const {
+    return s_iv.bit_size();
 }
 
 Node XG::node(int64_t id) const {
@@ -1149,6 +1170,17 @@ int64_t XG::rank_to_id(size_t rank) const {
         exit(1);
     }
     return i_iv[rank-1];
+}
+
+Edge XG::edge_for_entity(size_t rank) const {
+    Edge edge;
+    if (!entity_is_node(rank)) {
+        edge.set_from(rank_to_id(t_iv[rank]));
+        edge.set_to(rank_to_id(f_iv[rank]));
+        edge.set_from_start(f_from_start_cbv[rank]);
+        edge.set_to_end(f_to_end_cbv[rank]);
+    }
+    return edge;
 }
 
 vector<Edge> XG::edges_of(int64_t id) const {
@@ -1280,6 +1312,11 @@ bool XG::has_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const 
     return false;
 }
 
+bool XG::has_edge(const Edge& edge) const {
+    auto fixed = canonicalize(edge);
+    return has_edge(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
+}
+
 size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const {
     size_t rank1 = id_to_rank(id1);
     size_t rank2 = id_to_rank(id2);
@@ -1306,37 +1343,25 @@ size_t XG::edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool t
             return i+1;
         }
     }
-    //cerr << "edge does not exist: " << id1 << " -> " << id2 << endl;
-    assert(false);
+    // Otherwise the edge doesn't exist.
+    return numeric_limits<size_t>::max();
 }
 
 size_t XG::edge_rank_as_entity(const Edge& edge) const {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
-        int64_t rank = edge_rank_as_entity(edge.from(), edge.from_start(), edge.to(), edge.to_end());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else if(has_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start())) {
-        // Handle the case where the edge is spelled backwards; get the rank of the forwards version.
-        int64_t rank = edge_rank_as_entity(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
-#ifdef VERBOSE_DEBUG
-        cerr << "Found rank " << rank << endl;
-#endif
-        assert(!entity_is_node(rank));
-        return rank;
-    } else {
-        // Someone gave us an edge that doesn't exist.
-        assert(false);
-    }
+    auto fixed = canonicalize(edge);
+    return edge_rank_as_entity(fixed.from(), fixed.from_start(), fixed.to(), fixed.to_end());
 }
 
-Edge XG::canonicalize(const Edge& edge) {
-    if(has_edge(edge.from(), edge.from_start(), edge.to(), edge.to_end())) {
-        return edge;
-    } else {
+Edge XG::canonicalize(const Edge& edge) const {
+    // An edge is canonical if it is not doubly reversing and, if it is singly
+    // reversing, the lower side comes first.
+    // XG can't actually handle doubly reversing edges, I think.
+
+    if ((edge.from_start() && edge.to_end()) || ((edge.from_start() || edge.to_end()) && edge.from() > edge.to())) {
+        // Doubly reversing or (singly reversing and in the wrong direction)
         return make_edge(edge.to(), !edge.to_end(), edge.from(), !edge.from_start());
+    } else {
+        return edge;
     }
 }
 
@@ -1344,7 +1369,7 @@ Path XG::path(const string& name) const {
     // Extract a whole path by name
     
     // First find the XGPath we're using to store it.
-    XGPath& xgpath = *(paths[path_rank(name)-1]);
+    const XGPath& xgpath = *(paths[path_rank(name)-1]);
     
     // Make a new path to fill in
     Path to_return;
@@ -1356,7 +1381,13 @@ Path XG::path(const string& name) const {
     
     for(size_t i = 0; i < total_nodes; i++) {
         // For everything on the XGPath, put a Mapping on the real path.
-        *(to_return.add_mapping()) = xgpath.mapping(i);
+        Mapping* m = to_return.add_mapping();
+        *m = xgpath.mapping(i);
+        // Add one full length match edit, because the XGPath doesn't know how
+        // to make it.
+        Edit* e = m->add_edit();
+        e->set_from_length(node_length(m->position().node_id()));
+        e->set_to_length(e->from_length());
     }
     
     return to_return;
@@ -2246,12 +2277,38 @@ size_t XG::path_length(size_t rank) const {
     return paths[rank-1]->offsets.size();
 }
 
+pair<int64_t, vector<size_t> > XG::nearest_path_node(int64_t id, int max_steps) const {
+    set<int64_t> todo;
+    set<int64_t> seen;
+    todo.insert(id);
+    int i = 0;
+    while (!todo.empty() && i++ < max_steps) {
+        set<int64_t> next;
+        for (auto& id : todo) {
+            if (seen.count(id)) continue;
+            seen.insert(id);
+            vector<size_t> path_ids = paths_of_node(id);
+            if (!path_ids.empty()) {
+                // if we found a node on a path, return
+                return make_pair(id, path_ids);
+            } else {
+                for (auto& edge : edges_of(id)) {
+                    next.insert(edge.from());
+                    next.insert(edge.to());
+                }
+            }
+        }
+        todo = next;
+    }
+    return make_pair(id, vector<size_t>());
+}
+
 // if node is on path, return it.  otherwise, return next node (in id space)
 // that is on path.  if none exists, return 0
 int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
 
     // find our node in the members bit vector of the xgpath
-    XGPath* path = paths[path_rank - 1];
+    const XGPath* path = paths[path_rank - 1];
     size_t node_rank = id_to_rank(id);
     size_t entity_rank = node_rank_as_entity(node_rank);
     // if it's a path member, we're done
@@ -2272,13 +2329,15 @@ int64_t XG::next_path_node_by_id(size_t path_rank, int64_t id) const {
     // hop to the next member
     int64_t i = path->members_select(members_rank_at_node + 1);
 
-    // sanity check that we're at a node member
-    assert(f_bv[i] == 1 && path->members[i] == 1);
-    
-    // convert from entity_rank back to node id
-    int64_t next_id = entity_rank_as_node_rank(i + 1);
+    // if we're at an edge, get the node we link to
+    if (!entity_is_node(i)) {
+        //node_rank = id_to_rank();
+        Edge edge = edge_for_entity(i);
+        return edge.to();
+    } else {
+        return rank_to_id(node_rank);
+    }
 
-    return next_id;
 }
 
 // if node is on path, return it.  otherwise, return previous node (in id space)
@@ -2306,16 +2365,16 @@ int64_t XG::prev_path_node_by_id(size_t path_rank, int64_t id) const {
     }
     // hop to the previous member
     int64_t i = path->members_select(members_rank_at_node);
-    // skip edges till we hit previous node
-    for (; i >= 0 && f_bv[i] == 0; --i);
 
-    // sanity check that we're at a node member
-    assert(i >= 0 && f_bv[i] == 1 && path->members[i] == 1);
-    
-    // convert from entity_rank back to node id
-    int64_t prev_id = entity_rank_as_node_rank(i + 1);
+    // if we're at an edge, get the node we link to
+    if (!entity_is_node(i)) {
+        //node_rank = id_to_rank();
+        Edge edge = edge_for_entity(i);
+        return edge.from();
+    } else {
+        return rank_to_id(node_rank);
+    }
 
-    return prev_id;
 }
 
 // estimate distance (in bp) between two nodes along a path.
@@ -2335,18 +2394,21 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
 
     // fail
     if (next1 == 0 || prev2 == 0) {
-        assert(false); // for now
-        return -1;
+        return numeric_limits<int64_t>::max();
     }
 
     // find our positions on the path
-    vector<size_t> positions1 = node_positions_in_path(next1, name);
-    vector<size_t> positions2 = node_positions_in_path(prev2, name);
-    // use the last node1 position and first node2 position. 
+    vector<size_t> positions1 = position_in_path(next1, name);
+    vector<size_t> positions2 = position_in_path(prev2, name);
+    // use the last node1 position and first node2 position.
+    if (positions1.empty()
+        || positions2.empty()) {
+        return numeric_limits<int64_t>::max();
+    }
     int64_t pos1 = (int64_t)positions1.back();
     int64_t pos2 = (int64_t)positions2[0];
-    // shift over to the right of the left node if it's unchanged
-    if (next1 == id1) {
+    // shift over to the right of the left node if it's unchanged, and distinct from the right node.
+    if (next1 == id1 && next1 != prev2) {
         pos1 += node_length(next1);
     }
 
@@ -2358,47 +2420,31 @@ int64_t XG::approx_path_distance(const string& name, int64_t id1, int64_t id2) c
 // contain the nodes when possible. 
 int64_t XG::min_approx_path_distance(const vector<string>& names,
                                      int64_t id1, int64_t id2) const {
-    vector<int64_t> min_distance(3, numeric_limits<int64_t>::max());
 
-    function<void(const string&)> lambda =[&](const string& name) {
-        int member1 = path_contains_node(name, id1) ? 1 : 0;
-        int member2 = path_contains_node(name, id2) ? 1 : 0;
-        int md_idx = member1 + member2;
-        
-        if (md_idx == 2 ||
-            (md_idx == 1 && min_distance[2] == numeric_limits<int64_t>::max()) ||
-            (md_idx == 0 && min_distance[2] == numeric_limits<int64_t>::max() &&
-             min_distance[1] == numeric_limits<int64_t>::max())) {
-            
-            int64_t dist = approx_path_distance(name, id1, id2);
-            if (dist >= 0 && dist < min_distance[md_idx]) {
-                min_distance[md_idx] = dist;
+    int64_t min_distance = numeric_limits<int64_t>::max();
+    pair<int64_t, vector<size_t> > near1 = nearest_path_node(id1);
+    pair<int64_t, vector<size_t> > near2 = nearest_path_node(id2);
+    if (near1.second.size() || near2.second.size()) {
+        map<int, size_t> paths;
+        for (auto& i : near1.second) paths[i]++;
+        for (auto& i : near2.second) paths[i]++;
+        for (auto& i : paths) {
+            if (i.second < 2) continue;
+            auto name = path_name(i.first);
+            for (auto& p1 : position_in_path(near1.first, name)) {
+                for (auto& p2 : position_in_path(near2.first, name)) {
+                    int64_t distance = abs((int64_t)p1 - (int64_t)p2);
+                    min_distance = min(distance, min_distance);
+                }
             }
         }
-    };
-
-    if (names.size() > 1) {
-        for (const string& name : names) {
-            lambda(name);
-        }
-    } else {
-        size_t max_path_rank = this->max_path_rank();
-        for (size_t i = 1; i <= max_path_rank; ++i) {
-            lambda(path_name(i));
-        }
     }
-
-    if (min_distance[2] != numeric_limits<int64_t>::max()) {
-        return min_distance[2];
-    } else if (min_distance[1] != numeric_limits<int64_t>::max()) {
-        return min_distance[1];
-    } else if (min_distance[0] != numeric_limits<int64_t>::max()) {
-        return min_distance[0];
-    }
-    return -1;
+    return min_distance;
 }
 
-void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
+void XG::for_path_range(const string& name, int64_t start, int64_t stop,
+                        function<void(int64_t)> lambda, bool is_rev) const {
+
     // what is the node at the start, and at the end
     auto& path = *paths[path_rank(name)-1];
     size_t plen = path.offsets.size();
@@ -2411,24 +2457,35 @@ void XG::get_path_range(string& name, int64_t start, int64_t stop, Graph& g, boo
     }
     size_t pr1 = path.offsets_rank(start+1)-1;
     size_t pr2 = path.offsets_rank(stop+1)-1;
-    set<int64_t> nodes;
-    set<pair<side_t, side_t> > edges;
+
     // Grab the IDs visited in order along the path
     auto& pi_wt = path.ids;
     for (size_t i = pr1; i <= pr2; ++i) {
         // For all the visits along this section of path, grab the node being visited and all its edges.
         int64_t id = pi_wt[i];
-        nodes.insert(id);
-        for (auto& e : edges_from(id)) {
-            edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
-        }
-        for (auto& e : edges_to(id)) {
-            edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
-        }
+        lambda(id);
     }
+}
+
+void XG::get_path_range(const string& name, int64_t start, int64_t stop, Graph& g, bool is_rev) const {
+
+    set<int64_t> nodes;
+    set<pair<side_t, side_t> > edges;
+
+    for_path_range(name, start, stop, [&](int64_t id) {
+            nodes.insert(id);
+            for (auto& e : edges_from(id)) {
+                edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
+            }
+            for (auto& e : edges_to(id)) {
+                edges.insert(make_pair(make_side(e.from(), e.from_start()), make_side(e.to(), e.to_end())));
+            }
+        }, is_rev);
+
     for (auto& n : nodes) {
         *g.add_node() = node(n);
     }
+    
     map<string, Path*> local_paths;
     for (auto& n : nodes) {
         for (auto& m : node_mappings(n)) {
@@ -2479,11 +2536,11 @@ vector<size_t> XG::node_ranks_in_path(int64_t id, size_t rank) const {
     return ranks;
 }
 
-vector<size_t> XG::node_positions_in_path(int64_t id, const string& name) const {
-    return node_positions_in_path(id, path_rank(name));
+vector<size_t> XG::position_in_path(int64_t id, const string& name) const {
+    return position_in_path(id, path_rank(name));
 }
 
-vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
+vector<size_t> XG::position_in_path(int64_t id, size_t rank) const {
     auto& path = *paths[rank-1];
     vector<size_t> pos_in_path;
     for (auto i : node_ranks_in_path(id, rank)) {
@@ -2492,19 +2549,58 @@ vector<size_t> XG::node_positions_in_path(int64_t id, size_t rank) const {
     return pos_in_path;
 }
 
-map<string, vector<size_t> > XG::node_positions_in_paths(int64_t id, bool is_rev) const {
+map<string, vector<size_t> > XG::position_in_paths(int64_t id, bool is_rev, size_t offset) const {
     map<string, vector<size_t> > positions;
     for (auto& prank : paths_of_node(id)) {
         auto& path = *paths[prank-1];
         auto& pos_in_path = positions[path_name(prank)];
         for (auto i : node_ranks_in_path(id, prank)) {
-            size_t pos = (is_rev ?
-                          path_length(prank) - path.positions[i] - node_length(id)
-                          : path.positions[i]);
+            size_t pos = offset + (is_rev ?
+                                   path_length(prank) - path.positions[i] - node_length(id)
+                                   : path.positions[i]);
             pos_in_path.push_back(pos);
         }
     }
     return positions;
+}
+
+map<string, vector<size_t> > XG::distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                                                   int64_t id2, bool is_rev2, size_t offset2) const {
+    auto pos1 = position_in_paths(id1, is_rev1, offset1);
+    auto pos2 = position_in_paths(id2, is_rev2, offset2);
+    map<string, vector<size_t> > dist;
+    // position in a path is undefined in inversion
+    if (is_rev1 != is_rev2) {
+        return dist;
+    }
+    for (auto& c1 : pos1) {
+        auto c2 = pos2.find(c1.first);
+        if (c2 != pos2.end()) {
+            auto& d = dist[c1.first];
+            // distances are a cross of the points
+            for (auto o1 : c1.second) {
+                for (auto o2 : c2->second) {
+                    d.push_back(o1-o2);
+                }
+            }
+        }
+    }
+    return dist;
+}
+
+int XG::min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                              int64_t id2, bool is_rev2, size_t offset2) const {
+    auto dist = distance_in_paths(id1, is_rev1, offset1,
+                                  id2, is_rev2, offset2);
+    int min_dist = std::numeric_limits<int>::max();
+    for (auto& c : dist) {
+        for (auto& o : c.second) {
+            if (abs(o) < abs(min_dist)) {
+                min_dist = o;
+            }
+        }
+    }
+    return min_dist;
 }
 
 int64_t XG::node_at_path_position(const string& name, size_t pos) const {
@@ -2515,6 +2611,12 @@ int64_t XG::node_at_path_position(const string& name, size_t pos) const {
 Mapping XG::mapping_at_path_position(const string& name, size_t pos) const {
     size_t p = path_rank(name)-1;
     return paths[p]->mapping(paths[p]->offsets_rank(pos+1)-1);
+}
+
+size_t XG::node_start_at_path_position(const string& name, size_t pos) const {
+    size_t p = path_rank(name)-1;
+    size_t position_rank = paths[p]->offsets_rank(pos+1);
+    return paths[p]->offsets_select(position_rank);
 }
 
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse) {
@@ -2683,12 +2785,13 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         // We have to store the fact that we traversed this edge in the specified direction in our succinct storage. 
         
         // Find the edge as it actually appears in the graph.
-        // TODO: make sure it exists.
         Edge canonical = canonicalize(make_edge(node_id, from_start, next_node_id, to_end));
         
         // We're departing along this edge, so our orientation cares about
         // whether we have to take the edge forward or backward when departing.
-        int64_t edge_orientation_number = (edge_rank_as_entity(canonical) - 1) * 2 +
+        auto edge_rank = edge_rank_as_entity(canonical);
+        assert(edge_rank != numeric_limits<size_t>::max()); // We must actually have the edge
+        int64_t edge_orientation_number = (edge_rank - 1) * 2 +
             depart_by_reverse(canonical, node_id, from_start);
                 
 #ifdef VERBOSE_DEBUG
@@ -2839,8 +2942,8 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                     // Figure out the rank of the edge we need to take to get
                     // there. Note that we need to make sure we can handle going
                     // forward and backward over edges.
-                    size_t next_edge_rank = edge_rank_as_entity(make_edge(node_id, node_is_reverse,
-                        next_node_id, next_is_reverse));
+                    Edge canonical = canonicalize(make_edge(node_id, node_is_reverse, next_node_id, next_is_reverse));
+                    size_t next_edge_rank = edge_rank_as_entity(canonical);
                     
                     // Look up what local edge number that edge gets and say we follow it.
                     destinations.push_back(edge_rank_to_local_edge_number.at(next_edge_rank));
@@ -3109,7 +3212,7 @@ auto XG::extract_threads() const -> list<thread_t> {
             // Skip it if no threads start at it
             continue;
         }
-        
+
         for(int64_t j = 0; j < ts_iv[i]; j++) {
             // For every thread starting there
       
@@ -3254,6 +3357,13 @@ void XG::bs_set(int64_t side, vector<destination_t> new_array) {
     cerr << endl;
 #endif
 #elif GPBWT_MODE == MODE_DYNAMIC
+    auto current_separators = bs_single_array.rank(bs_single_array.size(), BS_SEPARATOR);
+    while(current_separators <= side - 2) {
+        // Tack on separators until we have enough
+        bs_single_array.insert(bs_single_array.size(), BS_SEPARATOR);
+        current_separators++;
+    }
+
     // Where does the block we want start?
     size_t this_range_start = bs_single_array.select(side - 2, BS_SEPARATOR) + 1;
     
@@ -3339,6 +3449,75 @@ void XG::bs_bake() {
     
     bs_arrays.clear();
 #endif
+}
+
+void XG::bs_dump(ostream& out) const {
+#if GPBWT_MODE == MODE_SDSL
+    if(!bs_arrays.empty()) {
+        // We still have per-side arrays
+        
+        for(auto& array : bs_arrays) {
+            // For each side in order
+            out << "---SEP---" << endl;
+            for(auto& entry : array) {
+                if(entry == BS_NULL) {
+                    // Mark nulls
+                    out << "**NULL**" << endl;
+                } else {
+                    // Output adjusted, actual edge numbers
+                    out << entry - 2 << endl;
+                }
+            }
+        }
+    } else {
+        // We have a single big array
+        
+        for(size_t i = 0; i < bs_single_array.size(); i++) {
+            auto entry = bs_single_array[i];
+            if(entry == BS_SEPARATOR) {
+                /// Mark separators
+                out << "---SEP---" << endl;
+            } else if(entry == BS_NULL) {
+                // Mark nulls
+                out << "**NULL**" << endl;
+            } else {
+                // Output adjusted, actual edge numbers
+                out << entry - 2 << endl;
+            }
+        }
+        
+        // Now dump the wavelet tree to a string
+        stringstream wt_dump;
+        bs_single_array.serialize(wt_dump, nullptr, "");
+        
+        out << endl << "++++Serialized Bits++++" << endl;
+        
+        // Turn all the bytes into binary representations
+        for(auto& letter : wt_dump.str()) {
+            // Make each into a bitset
+            bitset<8> bits(letter);
+            out << bits << endl;
+        }
+        
+    }
+#elif GPBWT_MODE == MODE_DYNAMIC
+    auto& bs_single_array = const_cast<rank_select_int_vector&>(this->bs_single_array);
+    
+    for(size_t i = 0; i < bs_single_array.size(); i++) {
+        auto entry = bs_single_array.at(i);
+        if(entry == BS_SEPARATOR) {
+            /// Mark separators
+            out << "---SEP---" << endl;
+        } else if(entry == BS_NULL) {
+            // Mark nulls
+            out << "**NULL**" << endl;
+        } else {
+            // Output adjusted, actual edge numbers
+            out << entry - 2 << endl;
+        }
+    }
+#endif
+    
 }
 
 size_t XG::count_matches(const thread_t& t) const {
@@ -3437,6 +3616,48 @@ void XG::extend_search(ThreadSearchState& state, const thread_t& t) const {
         state.current_side = next_side;
     }
 }
+
+void XG::extend_search(ThreadSearchState& state, const ThreadMapping& t) const {
+    // Just make it into a temporary vector
+    extend_search(state, thread_t{t});
+}
+
+XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
+    // We need to select just the threads starting at this node with this
+    // mapping, rather than those coming in from elsewhere.
+    
+    // Make a search state with nothing searched
+    ThreadSearchState state;
+    
+    // Say we've searched this ThreadMapping's side.    
+    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    
+    // Threads starting at a node come first, so select from 0 to the number of
+    // threads that start there.
+    state.range_start = 0;
+    state.range_end = ts_iv[state.current_side];
+    
+    return state;
+}
+
+XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
+    // We need to select just the threads coming in from elsewhere, and not
+    // those starting here.
+    
+    // Make a search state with nothing searched
+    ThreadSearchState state;
+    
+    // Say we've searched this ThreadMapping's side.    
+    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    
+    // Threads starting at a node come first, so select from past them to the
+    // number of threads total on the node.
+    state.range_start = ts_iv[state.current_side];
+    state.range_end = h_iv[state.current_side];
+    
+    return state;
+}
+
 
 size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
     sdsl::structure_tree_node* parent, const std::string name) {

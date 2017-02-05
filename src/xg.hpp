@@ -64,6 +64,14 @@ public:
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
+    
+    // We cannot move, assign, or copy until we add code to point SDSL suppots
+    // at the new addresses for their vectors.
+    XG(const XG& other) = delete;
+    XG(XG&& other) = delete;
+    XG& operator=(const XG& other) = delete;
+    XG& operator=(XG&& other) = delete;
+    
     void from_stream(istream& in, bool validate_graph = false,
         bool print_graph = false, bool store_threads = false,
         bool is_sorted_dag = false);
@@ -95,6 +103,8 @@ public:
     size_t edge_count;
     size_t path_count;
 
+    const uint64_t* sequence_data(void) const;
+    const size_t sequence_bit_size(void) const;
     size_t id_to_rank(int64_t id) const;
     int64_t rank_to_id(size_t rank) const;
     size_t max_node_rank(void) const;
@@ -105,22 +115,29 @@ public:
     size_t node_length(int64_t id) const;
     char pos_char(int64_t id, bool is_rev, size_t off) const; // character at position
     string pos_substr(int64_t id, bool is_rev, size_t off, size_t len = 0) const; // substring in range
+    Edge edge_for_entity(size_t rank) const;
     vector<Edge> edges_of(int64_t id) const;
     vector<Edge> edges_to(int64_t id) const;
     vector<Edge> edges_from(int64_t id) const;
     vector<Edge> edges_on_start(int64_t id) const;
     vector<Edge> edges_on_end(int64_t id) const;
     size_t node_rank_as_entity(int64_t id) const;
+    /// Get the rank of the edge, or numeric_limits<size_t>.max() if no such edge exists.
+    /// Edge must be specified in canonical orientation.
     size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
-    // Supports the edge articulated in any orientation. Edge must exist.
+    /// Supports the edge articulated in any orientation.
     size_t edge_rank_as_entity(const Edge& edge) const;
     // Given an edge which is in the graph in some orientation, return the edge
     // oriented as it actually appears.
-    Edge canonicalize(const Edge& edge);
+    Edge canonicalize(const Edge& edge) const;
     bool entity_is_node(size_t rank) const;
     size_t entity_rank_as_node_rank(size_t rank) const;
+    /// Returns true if the given edge is present in the given orientation, and false otherwise.
     bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
+    /// Returns true if the given edge is present in either orientation, and false otherwise.
+    bool has_edge(const Edge& edge) const;
 
+    // Pull out the path with the given name.
     Path path(const string& name) const;
     // Returns the rank of the path with the given name, or 0 if no such path
     // exists.
@@ -144,16 +161,24 @@ public:
     size_t node_occs_in_path(int64_t id, size_t rank) const;
     vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
     vector<size_t> node_ranks_in_path(int64_t id, size_t rank) const;
-    vector<size_t> node_positions_in_path(int64_t id, const string& name) const;
-    vector<size_t> node_positions_in_path(int64_t id, size_t rank) const;
-    map<string, vector<size_t> > node_positions_in_paths(int64_t id, bool is_rev = false) const;
+    vector<size_t> position_in_path(int64_t id, const string& name) const;
+    vector<size_t> position_in_path(int64_t id, size_t rank) const;
+    map<string, vector<size_t> > position_in_paths(int64_t id, bool is_rev = false, size_t offset = 0) const;
+    map<string, vector<size_t> > distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                                                   int64_t id2, bool is_rev2, size_t offset2) const;
+
+    int min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                              int64_t id2, bool is_rev2, size_t offset2) const;
     int64_t node_at_path_position(const string& name, size_t pos) const;
     Mapping mapping_at_path_position(const string& name, size_t pos) const;
+    size_t node_start_at_path_position(const string& name, size_t pos) const;    
     size_t path_length(const string& name) const;
     size_t path_length(size_t rank) const;
     // if node is on path, return it.  otherwise, return next node (in id space)
     // that is on path.  if none exists, return 0
     int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
+    // nearest node (in steps) that is in a path, and the paths
+    pair<int64_t, vector<size_t> > nearest_path_node(int64_t id, int max_steps = 16) const;
     // if node is on path, return it.  otherwise, return previous node (in id space)
     // that is on path.  if none exists, return 0
     int64_t prev_path_node_by_id(size_t path_rank, int64_t id) const;
@@ -164,11 +189,10 @@ public:
     // like above, but find minumum over list of paths.  if names is empty, do all paths
     int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
 
-
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
-    //void for_path_range(string& name, int64_t start, int64_t stop, function<void(Node)> lambda);
-    void get_path_range(string& name, int64_t start, int64_t stop, Graph& g, bool is_rev = false) const;
+    void for_path_range(const string& name, int64_t start, int64_t stop, function<void(int64_t node_id)> lambda, bool is_rev = false) const;
+    void get_path_range(const string& name, int64_t start, int64_t stop, Graph& g, bool is_rev = false) const;
     // basic method to query regions of the graph
     // add_paths flag allows turning off the (potentially costly, and thread-locking) addition of paths
     // when these are not necessary
@@ -208,42 +232,48 @@ public:
     // gPBWT interface
     
 #if GPBWT_MODE == MODE_SDSL
-    // We keep our strings in instances of this cool wavelet tree.
-    using rank_select_int_vector = sdsl::wt_huff<sdsl::rrr_vector<>>;
+    /// We keep our strings in instances of this cool run-length-compressed wavelet tree.
+    using rank_select_int_vector = sdsl::wt_rlmn<sdsl::sd_vector<>>;
 #elif GPBWT_MODE == MODE_DYNAMIC
     using rank_select_int_vector = dyn::rle_str;
 #endif
     
     
-    // We define a thread visit that's much smaller than a Protobuf Mapping.
+    /// We define a thread visit that's much smaller than a Protobuf Mapping.
     struct ThreadMapping {
         int64_t node_id;
         bool is_reverse;
+        
+        /// We need comparison for deduplication in sets and canonically orienting threads
+        bool operator<(const ThreadMapping& other) const {
+            return tie(node_id, is_reverse) < tie(other.node_id, other.is_reverse);
+        }
     };
     
-    // We define a thread as just a vector of these things, instead of a bulky
-    // Path.
+    /// We define a thread as just a vector of these things, instead of a bulky
+    /// Path.
     using thread_t = vector<ThreadMapping>;
     
-    // Insert a thread. Path name must be unique or empty.
+    /// Insert a thread. Path name must be unique or empty.
     void insert_thread(const thread_t& t);
-    // Insert a whole group of threads. Names should be unique or empty (though
-    // they aren't used yet). The indexed graph must be a DAG, at least in the
-    // subset traversed by the threads. (Reversing edges are fine, but the
-    // threads in a node must all run in the same direction.) This uses a
-    // special efficient batch insert algorithm for DAGs that lets us just scan
-    // the graph and generate nodes' B_s arrays independently. This must be
-    // called only once, and no threads can have been inserted previously.
-    // Otherwise the gPBWT data structures will be left in an inconsistent
-    // state.
+    /// Insert a whole group of threads. Names should be unique or empty (though
+    /// they aren't used yet). The indexed graph must be a DAG, at least in the
+    /// subset traversed by the threads. (Reversing edges are fine, but the
+    /// threads in a node must all run in the same direction.) This uses a
+    /// special efficient batch insert algorithm for DAGs that lets us just scan
+    /// the graph and generate nodes' B_s arrays independently. This must be
+    /// called only once, and no threads can have been inserted previously.
+    /// Otherwise the gPBWT data structures will be left in an inconsistent
+    /// state.
     void insert_threads_into_dag(const vector<thread_t>& t);
-    // Read all the threads embedded in the graph.
+    /// Read all the threads embedded in the graph.
     list<thread_t> extract_threads() const;
-    // Extract a particular thread by name. Name may not be empty.
-    // TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
+    /// Extract a particular thread by name. Name may not be empty.
+    /// TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
     thread_t extract_thread(const string& name) const;
-    // Count matches to a subthread among embedded threads
+    /// Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
+    /// Count matches to a subthread among embedded threads
     size_t count_matches(const Path& t) const;
     
     /**
@@ -254,27 +284,39 @@ public:
      * that can be extended to the whole collection of visits to a side.
      */
     struct ThreadSearchState {
-        // What side have we just arrived at in the search?
+        /// What side have we just arrived at in the search?
         int64_t current_side = 0;
-        // What is the first visit at that side that is selected?
+        /// What is the first visit at that side that is selected?
         int64_t range_start = 0;
-        // And what is the past-the-last visit that is selected?
+        /// And what is the past-the-last visit that is selected?
         int64_t range_end = numeric_limits<int64_t>::max();
         
-        // How many visits are selected?
+        /// How many visits are selected?
         inline int64_t count() {
             return range_end - range_start;
         }
         
-        // Return true if the range has nothing selected.
+        /// Return true if the range has nothing selected.
         inline bool is_empty() {
             return range_end <= range_start;
         }
     };
     
-    // Extend a search with the given section of a thread.
+    /// Extend a search with the given section of a thread.
     void extend_search(ThreadSearchState& state, const thread_t& t) const;
+    /// Extend a search with the given single ThreadMapping.
+    void extend_search(ThreadSearchState& state, const ThreadMapping& t) const;
+    
+    /// Select only the threads (if any) starting with a particular
+    /// ThreadMapping, and not those continuing through it.
+    ThreadSearchState select_starting(const ThreadMapping& start) const;
+    
+    /// Select only the threads (if any) continuing through a particular
+    /// ThreadMapping, and not those starting there.
+    ThreadSearchState select_continuing(const ThreadMapping& start) const;
 
+    /// Dump the whole B_s array to the given output stream as a report.
+    void bs_dump(ostream& out) const;
     
     char start_marker;
     char end_marker;
@@ -349,7 +391,7 @@ private:
     bit_vector ep_bv; // entity delimiters in ep_iv
     rank_support_v<1> ep_bv_rank;
     bit_vector::select_1_type ep_bv_select;
-    
+
     // Succinct thread storage
     
     // Threads are haplotype paths in the graph with no edits allowed, starting
@@ -424,8 +466,6 @@ private:
     // shouldn't call bs_set or bs_insert.
     void bs_bake();
     
-    
-    
     // We need the w function, which we call the "where_to" function. It tells
     // you, from a given visit at a given side, what visit offset if you go to
     // another side.
@@ -447,9 +487,16 @@ public:
     // Path names are stored in the XG object, in a compressed fashion, and are
     // not duplicated here.
     
-    sd_vector<> members;
-    rank_support_sd<1> members_rank;
-    select_support_sd<1> members_select;
+    // These contain rank and select supports and so cannot move or be copied
+    // without code to update them.
+    XGPath(const XGPath& other) = delete;
+    XGPath(XGPath&& other) = delete;
+    XGPath& operator=(const XGPath& other) = delete;
+    XGPath& operator=(XGPath&& other) = delete;
+    
+    rrr_vector<> members;
+    rrr_vector<>::rank_1_type members_rank;
+    rrr_vector<>::select_1_type members_select;
     wt_int<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;
@@ -460,8 +507,9 @@ public:
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
-                     std::string name = "");
-    Mapping mapping(size_t offset); // 0-based
+                     std::string name = "") const;
+    // Get a mapping. Note that the mapping will not have its lengths filled in.
+    Mapping mapping(size_t offset) const; // 0-based
 };
 
 
