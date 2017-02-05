@@ -1690,6 +1690,7 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
     
     // a local struct for Nodes that maintains edge list
     struct TemporaryNode {
+        TemporaryNode() {}
         TemporaryNode(string sequence) : sequence(sequence) {}
         string sequence;
         vector<pair<int64_t, bool>> edges_left;
@@ -1698,15 +1699,15 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
     
     // a local struct that packages a node traversal with its distance from the first position
     struct Traversal {
-        Traversal(int64_t id, bool rev, int64_t dist) : id(id), rev(rev) dist(dist) {}
+        Traversal(int64_t id, bool rev, int64_t dist) : id(id), rev(rev), dist(dist) {}
         // distance from position 1 to the right side of this node
         int64_t dist;
         int64_t id;
         bool rev;
         inline bool operator<(const Traversal& other) const {
             return dist > other.dist; // opposite order so priority queue selects minimum
-        };
-    }
+        }
+    };
     
     
     // for finding the largest node id in the subgraph
@@ -1714,8 +1715,8 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
     
     // the representation of the graph we're going to build up before storing in g
     unordered_map<int64_t, TemporaryNode> temp_graph;
-    temp_graph[id1] = TemporaryNode(node_sequence(id1))
-    temp_graph[id2] = TemporaryNode(node_sequence(id2))
+    temp_graph[id1] = TemporaryNode(node_sequence(id1));
+    temp_graph[id2] = TemporaryNode(node_sequence(id2));
     
     bool found_target = false;
     
@@ -1741,12 +1742,12 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
         }
         
         // search along a Dijkstra tree for shortest path
-        while (!priority_queue.empty()) {
+        while (!queue.empty()) {
             // get the next closest node to the starting position
-            Traversal trav = priority_queue.top();
-            priority_queue.pop();
+            Traversal trav = queue.top();
+            queue.pop();
             // mark this traversal as seen so we don't traverse it again
-            past_traversals.insert(make_pair(trav.id, trav.rev));
+            queued_traversals.insert(make_pair(trav.id, trav.rev));
             
             // which side are we traversing out of?
             auto& edges_out = trav.rev ? temp_graph[trav.id].edges_left : temp_graph[trav.id].edges_right;
@@ -1760,10 +1761,10 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
                 }
                 else {
                     next_id = edge.from();
-                    next_rev = edge.from_start != trav.rev;
+                    next_rev = edge.from_start() != trav.rev;
                 }
                 found_target = found_target || (next_id == id2 && next_rev == rev2);
-                max_id = max(max_id next_id);
+                max_id = max(max_id, next_id);
                 
                 // make sure the node is in
                 if (!temp_graph.count(next_id)) {
@@ -1772,7 +1773,7 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
                 
                 // distance to the end of this node
                 int64_t dist_thru = trav.dist + temp_graph[next_id].sequence.size();
-                if (!past_traversals.count(make_pair(next_id, next_rev)) && dist_thru < max_len) {
+                if (!queued_traversals.count(make_pair(next_id, next_rev)) && dist_thru < max_len) {
                     // we can add more nodes along same path without going over the max length
                     // and we have not reached the target node yet
                     queue.emplace(next_id, next_rev, dist_thru);
@@ -1786,7 +1787,7 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
                 // add this edge to the edge list on the current node
                 edges_out.push_back(make_pair(next_id, reversing));
                 // add to other node, but if it is a self-loop to the same side don't add it twice
-                if (!(trav.id == next.id && reversing) ) {
+                if (!(trav.id == next_id && reversing) ) {
                     edges_in.push_back(make_pair(trav.id, reversing));
                 }
             }
@@ -1832,7 +1833,7 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
             auto& edges_out = trav.second ? temp_graph[trav.first].edges_left
                                           : temp_graph[trav.first].edges_right;
             for (const pair<int64_t, bool>& edge : edges_out) {
-                pair<int64_t> next_trav = make_pair(edge.first, edge.second != trav.second);
+                pair<int64_t, bool> next_trav = make_pair(edge.first, edge.second != trav.second);
                 
                 // have to represent edges canonically for hash to correctly identify duplicates
                 reachable_edges.insert(canonical_form_edge(edge, trav.first, trav.second));
@@ -1896,7 +1897,7 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
             else {
                 return seq.substr(offset + 1, seq.size() - offset - 1);
             }
-        }
+        };
         // get sequence to the left
         auto trimmed_seq_left = [](const string& seq, int64_t offset, bool rev) {
             if (rev) {
@@ -1904,9 +1905,9 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
             }
             else {
                 // can't let the length go negative because it's going to be cast to size_t
-                return offset1 ? seq.substr(0, offset - 1) : string();
+                return offset ? seq.substr(0, offset - 1) : string();
             }
-        }
+        };
         
         // TODO: when we duplicate the source node, how is it going to be decided which is the
         // the source and which the sink?
@@ -2000,11 +2001,13 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
                     new_node.edges_left = node.edges_left;
                     // add edges backward to the new node
                     for (pair<int64_t, bool>& edge : new_node.edges_left) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
                         auto& edges_backward = edge.second ? next_node.edges_left : next_node.edges_right;
                         edges_backward.emplace_back(next_id, edge.second);
                     }
                     // remove the node from all backwards edge lists on the other side
                     for (pair<int64_t, bool>& edge : node.edges_right) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
                         auto& edges_backward = edge.second ? next_node.edges_right : next_node.edges_left;
                         for (auto iter = edges_backward.begin(); iter != edges_backward.end(); iter++) {
                             if ((*iter).first == id1) {
@@ -2021,11 +2024,13 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
                     new_node.edges_right = node.edges_right;
                     // add edges backward to the new node
                     for (pair<int64_t, bool>& edge : new_node.edges_right) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
                         auto& edges_backward = edge.second ? next_node.edges_right : next_node.edges_left;
                         edges_backward.emplace_back(next_id, edge.second);
                     }
                     // remove the node from all backwards edge lists on the other side
                     for (pair<int64_t, bool>& edge : node.edges_left) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
                         auto& edges_backward = edge.second ? next_node.edges_left : next_node.edges_right;
                         for (auto iter = edges_backward.begin(); iter != edges_backward.end(); iter++) {
                             if ((*iter).first == id1) {
@@ -2106,24 +2111,24 @@ unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t m
             node->set_sequence(node_record.second.sequence);
             
             // add each incoming edge
-            for (pair<int64_t, bool>& edge : node_record.second.edges_left) {
+            for (const pair<int64_t, bool>& edge : node_record.second.edges_left) {
                 // break symmetry on the edge to avoid adding it from both edge lists
                 if (edge.first > node_record.first || (edge.first == node_record.first && edge.second)) {
-                    Edge* edge = g.add_edge();
-                    edge->set_from(node_record.first);
-                    edge->set_to(edge.first);
-                    edge->set_from_start(true);
-                    edge->set_to_end(!edge.second);
+                    Edge* pb_edge = g.add_edge();
+                    pb_edge->set_from(node_record.first);
+                    pb_edge->set_to(edge.first);
+                    pb_edge->set_from_start(true);
+                    pb_edge->set_to_end(!edge.second);
                 }
             }
-            for (pair<int64_t, bool>& edge : node_record.second.edges_right) {
+            for (const pair<int64_t, bool>& edge : node_record.second.edges_right) {
                 // break symmetry on the edge to avoid adding it from both edge lists
                 if (edge.first >= node_record.first) {
-                    Edge* edge = g.add_edge();
-                    edge->set_from(node_record.first);
-                    edge->set_to(edge.first);
-                    edge->set_from_start(false);
-                    edge->set_to_end(edge.second);
+                    Edge* pb_edge = g.add_edge();
+                    pb_edge->set_from(node_record.first);
+                    pb_edge->set_to(edge.first);
+                    pb_edge->set_from_start(false);
+                    pb_edge->set_to_end(edge.second);
                 }
             }
         }
