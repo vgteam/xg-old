@@ -4,6 +4,9 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <queue>
 #include <omp.h>
 #include "cpp/vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
@@ -189,6 +192,19 @@ public:
     // (or end of graph reached).  if forward is false, go backwards...
     void get_id_range_by_length(int64_t id1, int64_t length, Graph& g, bool forward) const;
 
+    // Fills Graph g with the section of the indexed graph that connects two positions. The resulting
+    // graph will contain all paths that move forward from the first position to the second position,
+    // subject to a maximum length. No nodes or edges will be included if they are not on some path
+    // between the two positions. The nodes containing the end positions will be cut just past the
+    // position (so that the indicated positions are NOT included in the graph). To maintain all paths
+    // between the positions while cutting, it is sometimes necessary to duplicate nodes. Accordingly,
+    // the function returns a map from IDs in the created graph to IDs in the indexed graph. If no path
+    // between the two positions is under the maximum length, g is left empty. Throws an exception
+    // if g is not empty when function is called.
+    unordered_map<int64_t, int64_t>
+    extract_connecting_graph(Graph& g, int64_t max_len, int64_t id1, size_t offset1, bool rev1,
+                             int64_t id2, size_t offset2, bool rev2);
+    
     // gPBWT interface
     
 #if GPBWT_MODE == MODE_SDSL

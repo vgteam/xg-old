@@ -1677,6 +1677,462 @@ void XG::expand_context_by_length(Graph& g, size_t length, bool add_paths,
         add_paths_to_graph(nodes, g);
     }
 }
+
+// positions are exclusive on BOTH sides (i.e. neither exact position will be in the resulting graph)
+unordered_map<int64_t, int64_t> XG::extract_connecting_graph(Graph& g, int64_t max_len,
+                                                             int64_t id1, size_t offset1, bool rev1,
+                                                             int64_t id2, size_t offset2, bool rev2) {
+    
+    if (g.node_size() || g.edge_size()) {
+        cerr << "error:[XG::extract_connecting_graph] must extract into an empty graph" << endl;
+        exit(1);
+    }
+    
+    // a local struct for Nodes that maintains edge list
+    struct TemporaryNode {
+        TemporaryNode(string sequence) : sequence(sequence) {}
+        string sequence;
+        vector<pair<int64_t, bool>> edges_left;
+        vector<pair<int64_t, bool>> edges_right;
+    };
+    
+    // a local struct that packages a node traversal with its distance from the first position
+    struct Traversal {
+        Traversal(int64_t id, bool rev, int64_t dist) : id(id), rev(rev) dist(dist) {}
+        // distance from position 1 to the right side of this node
+        int64_t dist;
+        int64_t id;
+        bool rev;
+        inline bool operator<(const Traversal& other) const {
+            return dist > other.dist; // opposite order so priority queue selects minimum
+        };
+    }
+    
+    
+    // for finding the largest node id in the subgraph
+    int64_t max_id = max(id1, id2);
+    
+    // the representation of the graph we're going to build up before storing in g
+    unordered_map<int64_t, TemporaryNode> temp_graph;
+    temp_graph[id1] = TemporaryNode(node_sequence(id1))
+    temp_graph[id2] = TemporaryNode(node_sequence(id2))
+    
+    bool found_target = false;
+    
+    // mark both positions as "queued" so that we won't look for additional traversals
+    unordered_set<pair<int64_t, bool>> queued_traversals{make_pair(id1, rev1), make_pair(id2, rev2)};
+    
+    // separately handle (common) edge case that both positions are on the same node
+    // and the second is reachable from the first
+    // TODO: is there a more elegant way to do this?
+    if (id1 == id2 && rev1 == rev2 && offset1 < offset2) {
+        found_target = (offset2 - offset1 < max_len);
+    }
+    else {
+        // have to get to the beginning of the node with second position in at most this length
+        max_len -= offset2;
+        
+        priority_queue<Traversal> queue;
+        // the distance to the end of the starting node
+        int64_t beginning_length = temp_graph[id1].sequence.size() - offset1;
+        // if we can reach the end of this node, init the queue with it
+        if (beginning_length < max_len) {
+            queue.emplace(id1, rev1, beginning_length);
+        }
+        
+        // search along a Dijkstra tree for shortest path
+        while (!priority_queue.empty()) {
+            // get the next closest node to the starting position
+            Traversal trav = priority_queue.top();
+            priority_queue.pop();
+            // mark this traversal as seen so we don't traverse it again
+            past_traversals.insert(make_pair(trav.id, trav.rev));
+            
+            // which side are we traversing out of?
+            auto& edges_out = trav.rev ? temp_graph[trav.id].edges_left : temp_graph[trav.id].edges_right;
+            for (Edge& edge : (trav.rev ? edges_on_start(trav.id) : edges_on_end(trav.id))) {
+                // get the orientation and id of the other side of the edge
+                int64_t next_id;
+                bool next_rev;
+                if (edge.from() == trav.id && edge.from_start() == trav.rev) {
+                    next_id = edge.to();
+                    next_rev = edge.to_end() != trav.rev;
+                }
+                else {
+                    next_id = edge.from();
+                    next_rev = edge.from_start != trav.rev;
+                }
+                found_target = found_target || (next_id == id2 && next_rev == rev2);
+                max_id = max(max_id next_id);
+                
+                // make sure the node is in
+                if (!temp_graph.count(next_id)) {
+                    temp_graph[next_id] = TemporaryNode(node_sequence(next_id));
+                }
+                
+                // distance to the end of this node
+                int64_t dist_thru = trav.dist + temp_graph[next_id].sequence.size();
+                if (!past_traversals.count(make_pair(next_id, next_rev)) && dist_thru < max_len) {
+                    // we can add more nodes along same path without going over the max length
+                    // and we have not reached the target node yet
+                    queue.emplace(next_id, next_rev, dist_thru);
+                    queued_traversals.emplace(next_id, next_rev);
+                }
+                
+                // what side does this edge enter on the next node?
+                auto& edges_in = next_rev ? temp_graph[next_id].edges_right : temp_graph[next_id].edges_left;
+                // is the edge reversing?
+                bool reversing = (trav.rev != next_rev);
+                // add this edge to the edge list on the current node
+                edges_out.push_back(make_pair(next_id, reversing));
+                // add to other node, but if it is a self-loop to the same side don't add it twice
+                if (!(trav.id == next.id && reversing) ) {
+                    edges_in.push_back(make_pair(trav.id, reversing));
+                }
+            }
+        }
+    }
+    // if we have to add new nodes, any id this large or larger will not have conflicts
+    int64_t next_id = max_id + 1;
+    
+    // a translator for node ids in g to node ids in the original graph
+    unordered_map<int64_t, int64_t> id_trans;
+    
+    // leave g empty if we can't connect these positions
+    if (found_target) {
+        // put an edge from a given side of a node into canonical form
+        auto canonical_form_edge = [](const pair<int64_t, bool>& edge, int64_t id, bool left) {
+            if (edge.first < id || (left && edge.first == id)) {
+                return make_pair(make_pair(edge.first, edge.second == left), make_pair(id, !left));
+            }
+            else {
+                return make_pair(make_pair(id, left), make_pair(edge.first, edge.second != left));
+            }
+        };
+        
+        // search backwards from the second position to remove anything that isn't on
+        // some path between the two positions
+        queued_traversals.clear();
+        // edges stored ((as from, from_start), (to, to_end))
+        unordered_set<pair<pair<int64_t, bool>, pair<int64_t, bool>>> reachable_edges;
+        
+        list<pair<int64_t, bool>> stack{make_pair(id2, !rev2)};
+        queued_traversals.insert(stack.back());
+        // mark the final node as "queued" so the search won't traverse through it
+        queued_traversals.insert(make_pair(id1, !rev1));
+        
+        // TODO: technically we should also keep track of distance and do a Dijkstra traversal backwards
+        // too, or else we will occasionally get a false positive path that is too long but has a prefix
+        // that joins up with a path that is under the max length
+        
+        while (!stack.empty()) {
+            pair<int64_t, bool> trav = stack.back();
+            stack.pop_back();
+            
+            auto& edges_out = trav.second ? temp_graph[trav.first].edges_left
+                                          : temp_graph[trav.first].edges_right;
+            for (const pair<int64_t, bool>& edge : edges_out) {
+                pair<int64_t> next_trav = make_pair(edge.first, edge.second != trav.second);
+                
+                // have to represent edges canonically for hash to correctly identify duplicates
+                reachable_edges.insert(canonical_form_edge(edge, trav.first, trav.second));
+                
+                if (!queued_traversals.count(next_trav)) {
+                    stack.push_back(next_trav);
+                    queued_traversals.insert(next_trav);
+                }
+            }
+        }
+        
+        // remove any edges we didn't traverse and record which nodes to erase
+        vector<unordered_map<int64_t, TemporaryNode>::iterator> to_erase;
+        for (auto iter = temp_graph.begin(); iter != temp_graph.end(); iter++) {
+            int64_t id = (*iter).first;
+            if (queued_traversals.count(make_pair(id, true)) || queued_traversals.count(make_pair(id, false))) {
+                // this node is on some path between the two positions
+                TemporaryNode& node = (*iter).second;
+                // move all edges we don't want to the end
+                auto new_end = std::remove_if(node.edges_left.begin(), node.edges_left.end(),
+                                              [&](const pair<int64_t, bool>& edge) {
+                                                  return !reachable_edges.count(canonical_form_edge(edge, id, true)); });
+                // trim the vector down to only the ones we ant
+                node.edges_left.resize(new_end - node.edges_left.begin());
+                // repeat for the other side
+                new_end = std::remove_if(node.edges_right.begin(), node.edges_right.end(),
+                                         [&](const pair<int64_t, bool>& edge) {
+                                             return !reachable_edges.count(canonical_form_edge(edge, id, false)); });
+                node.edges_right.resize(new_end - node.edges_right.begin());
+                
+            }
+            else {
+                // this node was found in the initial traversal, but is not actually on a path
+                // between the two positions
+                to_erase.push_back(iter);
+            }
+        }
+        
+        // remove the nodes
+        for (auto& iter : to_erase) {
+            temp_graph.erase(iter);
+        }
+        
+        // the graph now only consists of original nodes that we are going to keep, so record them in
+        // the node id translator
+        for (auto& node_record : temp_graph) {
+            id_trans[node_record.first] = node_record.first;
+        }
+        
+        // if there are edges traversed in both directions from the boundary position nodes,
+        // they must be in cycles
+        bool in_cycle_1 = !(temp_graph[id1].edges_left.empty() || temp_graph[id1].edges_right.empty());
+        bool in_cycle_2 = !(temp_graph[id2].edges_left.empty() || temp_graph[id2].edges_right.empty());
+        
+        // functions to extract the part of the node string past the first and second positions:
+        // get sequence to the right
+        auto trimmed_seq_right = [](const string& seq, int64_t offset, bool rev) {
+            if (rev) {
+                return seq.substr(0, seq.size() - offset - 1);
+            }
+            else {
+                return seq.substr(offset + 1, seq.size() - offset - 1);
+            }
+        }
+        // get sequence to the left
+        auto trimmed_seq_left = [](const string& seq, int64_t offset, bool rev) {
+            if (rev) {
+                return seq.substr(seq.size() - offset, offset - 1);
+            }
+            else {
+                // can't let the length go negative because it's going to be cast to size_t
+                return offset1 ? seq.substr(0, offset - 1) : string();
+            }
+        }
+        
+        // TODO: when we duplicate the source node, how is it going to be decided which is the
+        // the source and which the sink?
+        
+        // cut the nodes containing the start positions, duplicating or removing them if necessary
+        if (id1 == id2) {
+            if (rev1 == rev2 && offset1 < offset2) {
+                // this should have forestalled the search, so the graph is just the one node and we can trim it
+                // from both sides
+                TemporaryNode& node = temp_graph[id1];
+                node.sequence = rev1 ? node.sequence.substr(node.sequence.size() - offset2,  offset2 - offset1 - 1)
+                                     : node.sequence.substr(offset1 + 1, offset2 - offset1 - 1);
+            }
+            else if (rev1 == rev2) {
+                // note: this means the node is definitely in a cycle, but the interior of the
+                // node was never traversed so we can cut it out
+                
+                TemporaryNode& node = temp_graph[id1];
+                temp_graph[next_id] = TemporaryNode(node.sequence);
+                TemporaryNode& new_node = temp_graph[next_id];
+                
+                // move the edges from one side onto the new node
+                new_node.edges_right = std::move(node.edges_right);
+                node.edges_right.clear();
+                
+                // relabel the edges pointing back into this side
+                for (pair<int64_t, bool>& edge : new_node.edges_right) {
+                    TemporaryNode& next_node = temp_graph[edge.first];
+                    for (pair<int64_t, bool>& edge_backward : edge.second ? next_node.edges_right : next_node.edges_left) {
+                        if (edge_backward.first == id1) {
+                            edge_backward.first = next_id;
+                            break;
+                        }
+                    }
+                }
+                
+                // cut the sequences of the two nodes according to the search positions and switch
+                // the pointer for one of the positions onto the new node
+                if (rev1) {
+                    id2 = next_id;
+                    id_trans[next_id] = id2;
+                    node.sequence = trimmed_seq_right(node.sequence, offset1, rev1);
+                    new_node.sequence = trimmed_seq_left(new_node.sequence, offset2, rev2);
+                }
+                else {
+                    id1 = next_id;
+                    id_trans[next_id] = id1;
+                    new_node.sequence = trimmed_seq_right(new_node.sequence, offset1, rev1);
+                    node.sequence = trimmed_seq_left(node.sequence, offset2, rev2);
+                }
+                
+                next_id++;
+            }
+            else {
+                // because they are on opposite strands, the traversals leave out of the same side of the
+                // node, which may also be in a cycle
+                
+                TemporaryNode& node = temp_graph[id1];
+                
+                if (in_cycle_1) {
+                    // create a new node that will retain all of the edges to preserve cycles
+                    temp_graph[next_id] = TemporaryNode(node.sequence);
+                    TemporaryNode& new_node = temp_graph[next_id];
+                    
+                    // deep copy all edges
+                    new_node.edges_left = node.edges_left;
+                    new_node.edges_right = node.edges_right;
+                    
+                    // add edges back from all connected nodes
+                    for (pair<int64_t, bool>& edge : new_node.edges_left) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
+                        auto& edges_backward = edge.second ? next_node.edges_left : next_node.edges_right;
+                        edges_backward.emplace_back(next_id, edge.second);
+                    }
+                    for (pair<int64_t, bool>& edge : new_node.edges_right) {
+                        TemporaryNode& next_node = temp_graph[edge.first];
+                        auto& edges_backward = edge.second ? next_node.edges_right : next_node.edges_left;
+                        edges_backward.emplace_back(next_id, edge.second);
+                    }
+                    
+                    id_trans[next_id] = id1;
+                    next_id++;
+                }
+                
+                // make a new node so we can trim the sequence in two places
+                temp_graph[next_id] = TemporaryNode(node.sequence);
+                TemporaryNode& new_node = temp_graph[next_id];
+                
+                if (rev1) {
+                    // deep copy the edge list
+                    new_node.edges_left = node.edges_left;
+                    // add edges backward to the new node
+                    for (pair<int64_t, bool>& edge : new_node.edges_left) {
+                        auto& edges_backward = edge.second ? next_node.edges_left : next_node.edges_right;
+                        edges_backward.emplace_back(next_id, edge.second);
+                    }
+                    // remove the node from all backwards edge lists on the other side
+                    for (pair<int64_t, bool>& edge : node.edges_right) {
+                        auto& edges_backward = edge.second ? next_node.edges_right : next_node.edges_left;
+                        for (auto iter = edges_backward.begin(); iter != edges_backward.end(); iter++) {
+                            if ((*iter).first == id1) {
+                                edges_backward.erase(iter);
+                                break;
+                            }
+                        }
+                    }
+                    // remove the edges in from the other side on the old node
+                    node.edges_left.clear();
+                }
+                else {
+                    // deep copy the edge list
+                    new_node.edges_right = node.edges_right;
+                    // add edges backward to the new node
+                    for (pair<int64_t, bool>& edge : new_node.edges_right) {
+                        auto& edges_backward = edge.second ? next_node.edges_right : next_node.edges_left;
+                        edges_backward.emplace_back(next_id, edge.second);
+                    }
+                    // remove the node from all backwards edge lists on the other side
+                    for (pair<int64_t, bool>& edge : node.edges_left) {
+                        auto& edges_backward = edge.second ? next_node.edges_left : next_node.edges_right;
+                        for (auto iter = edges_backward.begin(); iter != edges_backward.end(); iter++) {
+                            if ((*iter).first == id1) {
+                                edges_backward.erase(iter);
+                                break;
+                            }
+                        }
+                    }
+                    // remove the edges in from the other side on the old node
+                    node.edges_left.clear();
+                }
+                
+                //  cut the sequences of the two nodes according to the search positions
+                node.sequence = trimmed_seq_right(node.sequence, offset1, rev1);
+                new_node.sequence = trimmed_seq_left(new_node.sequence, offset2, rev2);
+                // record the translation
+                id_trans[next_id] = id2;
+                // update the sink node to the new node
+                id2 = next_id;
+                next_id++;
+            }
+        }
+        else {
+            // the two positions are on separate nodes, so we can handle the two sides independently
+            
+            TemporaryNode& node_1 = temp_graph[id1];
+            // duplicate the node if it's in a cycle
+            if (in_cycle_1) {
+                temp_graph[next_id] = TemporaryNode(node_1.sequence);
+                TemporaryNode& new_node = temp_graph[next_id];
+                // copy the edges going out of the side that the traversal leaves
+                auto& new_edges = rev1 ? new_node.edges_left : new_node.edges_right;
+                for (pair<int64_t, bool>& edge : rev1 ? node_1.edges_left : node_1.edges_right) {
+                    TemporaryNode& next_node = temp_graph[edge.first];
+                    auto& edges_backward = rev1 != edge.second ? next_node.edges_right : next_node.edges_left;
+                    new_edges.push_back(edge);
+                    edges_backward.emplace_back(next_id, edge.second);
+                }
+                // record the translation
+                id_trans[next_id] = id1;
+                // set up to cut the new node instead the previous one
+                id1 = next_id;
+                node_1 = new_node;
+                next_id++;
+            }
+            // cut the sequence
+            node_1.sequence = trimmed_seq_right(node_1.sequence, offset1, rev1);
+            
+            TemporaryNode& node_2 = temp_graph[id2];
+            // duplicate the node if it's in a cycle
+            if (in_cycle_2) {
+                temp_graph[next_id] = TemporaryNode(node_2.sequence);
+                TemporaryNode& new_node = temp_graph[next_id];
+                // copy the edges going out of the side that the traversal leaves
+                auto& new_edges = rev2 ? new_node.edges_right : new_node.edges_left;
+                for (pair<int64_t, bool>& edge : rev2 ? node_2.edges_right : node_2.edges_left) {
+                    TemporaryNode& next_node = temp_graph[edge.first];
+                    auto& edges_backward = rev2 != edge.second ? next_node.edges_left : next_node.edges_right;
+                    new_edges.push_back(edge);
+                    edges_backward.emplace_back(next_id, edge.second);
+                }
+                // record the translation
+                id_trans[next_id] = id2;
+                // set up to cut the new node instead the previous one
+                id2 = next_id;
+                node_2 = new_node;
+                next_id++;
+            }
+            // cut the sequence
+            node_2.sequence = trimmed_seq_left(node_2.sequence, offset2, rev2);
+        }
+        
+        // transfer to g
+        for (const pair<int64_t, TemporaryNode>& node_record : temp_graph) {
+            // add in each node
+            Node* node = g.add_node();
+            node->set_id(node_record.first);
+            node->set_sequence(node_record.second.sequence);
+            
+            // add each incoming edge
+            for (pair<int64_t, bool>& edge : node_record.second.edges_left) {
+                // break symmetry on the edge to avoid adding it from both edge lists
+                if (edge.first > node_record.first || (edge.first == node_record.first && edge.second)) {
+                    Edge* edge = g.add_edge();
+                    edge->set_from(node_record.first);
+                    edge->set_to(edge.first);
+                    edge->set_from_start(true);
+                    edge->set_to_end(!edge.second);
+                }
+            }
+            for (pair<int64_t, bool>& edge : node_record.second.edges_right) {
+                // break symmetry on the edge to avoid adding it from both edge lists
+                if (edge.first >= node_record.first) {
+                    Edge* edge = g.add_edge();
+                    edge->set_from(node_record.first);
+                    edge->set_to(edge.first);
+                    edge->set_from_start(false);
+                    edge->set_to_end(edge.second);
+                }
+            }
+        }
+    }
+    // TODO: it's not enough to return the translator because there's also the issue of the positions
+    // on the first node being offset (however this information is fully contained in the arguments of
+    // the function, which are obviously available in the environment that calls this)
+    return id_trans;
+}
     
 // if the graph ids partially ordered, this works no prob
 // otherwise... owch
