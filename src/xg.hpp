@@ -104,8 +104,16 @@ public:
     // you, from a given visit at a given side, what visit offset if you go to
     // another side.
     int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
+    
+    // This is another version of the where_to function which requires that you
+    // supply two vectors of edges.
+    // edges_into_new -> edges going into new_side
+    // edges_out_of_old -> edges coming out of current_side
+    // this is to save the overhead of re-extracting these edge-vectors in cases
+    // where you're calling where_to between the same two sides (but with 
+    // different offsets) many times. Otherwise use version above
     int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side,
-      vector<Edge>& edges, vector<Edge>& edges_out) const;
+      vector<Edge>& edges_into_new, vector<Edge>& edges_out_of_old) const;
 
     size_t id_to_rank(int64_t id) const;
     int64_t rank_to_id(size_t rank) const;
@@ -213,54 +221,45 @@ public:
     // gPBWT interface
     
 #if GPBWT_MODE == MODE_SDSL
-    /// We keep our strings in instances of this cool run-length-compressed wavelet tree.
+    // We keep our strings in instances of this cool run-length-compressed wavelet tree.
     using rank_select_int_vector = sdsl::wt_rlmn<sdsl::sd_vector<>>;
 #elif GPBWT_MODE == MODE_DYNAMIC
     using rank_select_int_vector = dyn::rle_str;
 #endif
     
     
-    /// We define a thread visit that's much smaller than a Protobuf Mapping.
+    // We define a thread visit that's much smaller than a Protobuf Mapping.
     struct ThreadMapping {
         int64_t node_id;
         bool is_reverse;
-        
-        /// We need comparison for deduplication in sets and canonically orienting threads
-        bool operator<(const ThreadMapping& other) const {
-            return tie(node_id, is_reverse) < tie(other.node_id, other.is_reverse);
-        }
     };
     
+    // we have a public function for querying the contents of the h_iv vector
     int64_t node_height(ThreadMapping node) const;
     
-    /// We define a thread as just a vector of these things, instead of a bulky
-    /// Path.
-
+    // We define a thread as just a vector of these things, instead of a bulky
+    // Path.
     using thread_t = vector<ThreadMapping>;
     
-    /// Insert a thread. Path name must be unique or empty.
+    // Insert a thread. Path name must be unique or empty.
     void insert_thread(const thread_t& t);
-    /// Insert a whole group of threads. Names should be unique or empty (though
-    /// they aren't used yet). The indexed graph must be a DAG, at least in the
-    /// subset traversed by the threads. (Reversing edges are fine, but the
-    /// threads in a node must all run in the same direction.) This uses a
-    /// special efficient batch insert algorithm for DAGs that lets us just scan
-    /// the graph and generate nodes' B_s arrays independently. This must be
-    /// called only once, and no threads can have been inserted previously.
-    /// Otherwise the gPBWT data structures will be left in an inconsistent
-    /// state.
+    // Insert a whole group of threads. Names should be unique or empty (though
+    // they aren't used yet). The indexed graph must be a DAG, at least in the
+    // subset traversed by the threads. (Reversing edges are fine, but the
+    // threads in a node must all run in the same direction.) This uses a
+    // special efficient batch insert algorithm for DAGs that lets us just scan
+    // the graph and generate nodes' B_s arrays independently. This must be
+    // called only once, and no threads can have been inserted previously.
+    // Otherwise the gPBWT data structures will be left in an inconsistent
+    // state.
     void insert_threads_into_dag(const vector<thread_t>& t);
-    /// Read all the threads embedded in the graph.
+    // Read all the threads embedded in the graph.
     list<thread_t> extract_threads() const;
-    /// Extract a particular thread by name. Name may not be empty.
-    /// TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
-    thread_t extract_thread(const string& name) const;
-
+    // Extract a particular thread, referring to it by its offset at node; step
+    // it out to a maximum of max_length
     thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
-
-    /// Count matches to a subthread among embedded threads
+    // Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
-    /// Count matches to a subthread among embedded threads
     size_t count_matches(const Path& t) const;
     
     /**
@@ -271,38 +270,28 @@ public:
      * that can be extended to the whole collection of visits to a side.
      */
     struct ThreadSearchState {
-        /// What side have we just arrived at in the search?
+        // What side have we just arrived at in the search?
         int64_t current_side = 0;
-        /// What is the first visit at that side that is selected?
+        // What is the first visit at that side that is selected?
         int64_t range_start = 0;
-        /// And what is the past-the-last visit that is selected?
+        // And what is the past-the-last visit that is selected?
         int64_t range_end = numeric_limits<int64_t>::max();
         
-        /// How many visits are selected?
+        // How many visits are selected?
         inline int64_t count() {
             return range_end - range_start;
         }
         
-        /// Return true if the range has nothing selected.
+        // Return true if the range has nothing selected.
         inline bool is_empty() {
             return range_end <= range_start;
         }
     };
     
-    /// Extend a search with the given section of a thread.
+    // Extend a search with the given section of a thread.
     void extend_search(ThreadSearchState& state, const thread_t& t) const;
-    /// Extend a search with the given single ThreadMapping.
-    void extend_search(ThreadSearchState& state, const ThreadMapping& t) const;
-    
-    /// Select only the threads (if any) starting with a particular
-    /// ThreadMapping, and not those continuing through it.
-    ThreadSearchState select_starting(const ThreadMapping& start) const;
-    
-    /// Select only the threads (if any) continuing through a particular
-    /// ThreadMapping, and not those starting there.
-    ThreadSearchState select_continuing(const ThreadMapping& start) const;
 
-    /// Dump the whole B_s array to the given output stream as a report.
+    // Dump the whole B_s array to the given output stream as a report.
     void bs_dump(ostream& out) const;
     
     char start_marker;
@@ -450,7 +439,7 @@ private:
     void bs_insert(int64_t side, int64_t offset, destination_t value);
     
     // Prepare the B_s array data structures for query. After you call this, you
-    // shouldn't call bs_set or bs_insert.
+    // shouldn't call bset or bs_insert.
     void bs_bake();
 };
 
