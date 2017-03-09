@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <queue>
 #include <omp.h>
 #include "cpp/vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
@@ -185,7 +186,21 @@ public:
     int64_t approx_path_distance(const string& name, int64_t id1, int64_t id2) const;
     // like above, but find minumum over list of paths.  if names is empty, do all paths
     int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
-
+    
+    // returns all of the paths that a node traversal occurs on and in which orientation. false
+    // indicates that the traversal occurs in the same orientation as in the path, true indicates
+    // reverse (both may be included for the same traversal)
+    vector<pair<size_t, bool>> paths_of_node_traversal(int64_t id, bool is_rev) const;
+    
+    // the oriented distance (positive if pos2 is further along the path than pos1, otherwise negative)
+    // estimated by the distance along the nearest shared path to the two positions plus the distance
+    // to traverse to that path. returns numeric_limits<int64_t>::max() if no pair of nodes that occur same
+    // on the strand of a path are reachable within the max search distance (measured in sequence length,
+    // not node length).
+    int64_t closest_shared_path_oriented_distance(int64_t id1, size_t offset1, bool rev1,
+                                                  int64_t id2, size_t offset2, bool rev2,
+                                                  size_t max_search_dist = 100) const;
+    
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
     void for_path_range(const string& name, int64_t start, int64_t stop, function<void(int64_t node_id)> lambda, bool is_rev = false) const;
@@ -212,7 +227,7 @@ public:
     // walk forward in id space, collecting nodes, until at least length bases covered
     // (or end of graph reached).  if forward is false, go backwards...
     void get_id_range_by_length(int64_t id1, int64_t length, Graph& g, bool forward) const;
-
+    
     // gPBWT interface
     
 #if GPBWT_MODE == MODE_SDSL
