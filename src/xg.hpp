@@ -237,7 +237,7 @@ public:
     /// We define a thread as just a vector of these things, instead of a bulky
     /// Path.
     using thread_t = vector<ThreadMapping>;
-    
+
     /// Insert a thread. Path name must be unique or empty.
     void insert_thread(const thread_t& t);
     /// Insert a whole group of threads. Names should be unique or empty (though
@@ -249,7 +249,7 @@ public:
     /// called only once, and no threads can have been inserted previously.
     /// Otherwise the gPBWT data structures will be left in an inconsistent
     /// state.
-    void insert_threads_into_dag(const vector<thread_t>& t);
+    void insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names);
     /// Read all the threads embedded in the graph.
     list<thread_t> extract_threads() const;
     /// Extract a particular thread by name. Name may not be empty.
@@ -423,6 +423,17 @@ private:
     // room for the null sentinel and the separator. Currently the separator
     // isn't used; we just place these by side.
     rank_select_int_vector bs_single_array;
+
+    // path name storage
+    // CSA that lets us look up names efficiently, build from ordered null-delimited names
+    csa_bitcompressed<> tn_csa;
+    // allows us to go from positions in the CSA to ranked threads
+    //bit_vector tn_bv;
+    //rank_support_v<1> tn_bv_rank;
+    //bit_vector::select_1_type tn_bv_select;
+    sd_vector<> tn_cbv;
+    sd_vector<>::rank_1_type tn_cbv_rank;
+    sd_vector<>::select_1_type tn_cbv_select;
     
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.

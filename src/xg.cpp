@@ -142,6 +142,11 @@ void XG::load(istream& in) {
     t_to_end_cbv.load(in);
     t_from_start_cbv.load(in);
 
+    tn_csa.load(in);
+    tn_cbv.load(in);
+    tn_cbv_rank.load(in);
+    tn_cbv_select.load(in);
+    
     pn_iv.load(in);
     pn_csa.load(in);
     pn_bv.load(in);
@@ -165,6 +170,7 @@ void XG::load(istream& in) {
     // Load all the B_s arrays for sides.
     // Baking required before serialization.
     deserialize(bs_single_array, in);
+
 }
 
 void XGPath::load(istream& in) {
@@ -366,6 +372,12 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += t_to_end_cbv.serialize(out, child, "to_is_to_end");
     written += t_from_start_cbv.serialize(out, child, "to_is_from_start");
 
+    // save the thread name index
+    written += tn_csa.serialize(out, child, "thread_name_csa");
+    written += tn_cbv.serialize(out, child, "thread_name_cbv");
+    written += tn_cbv_rank.serialize(out, child, "thread_name_cbv_rank");
+    written += tn_cbv_select.serialize(out, child, "thread_name_cbv_select");
+
     // Treat the paths as their own node
     size_t paths_written = 0;
     auto paths_child = sdsl::structure_tree::add_child(child, "paths", sdsl::util::class_name(*this));
@@ -393,6 +405,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     // Treat the threads as their own node.
     // This will mess up any sort of average size stats, but it will also be useful.
     auto threads_child = sdsl::structure_tree::add_child(child, "threads", sdsl::util::class_name(*this));
+    
     size_t threads_written = 0;
     threads_written += h_iv.serialize(out, threads_child, "thread_usage_count");
     threads_written += ts_iv.serialize(out, threads_child, "thread_start_count");
@@ -789,7 +802,7 @@ void XG::build(map<id_t, string>& node_label,
 #if GPBWT_MODE == MODE_SDSL
         if(is_sorted_dag) {
             // Do the batch insert
-            insert_threads_into_dag(batch);
+            insert_threads_into_dag(batch, {});
         }
         // TODO: else case!
 #endif
@@ -2301,8 +2314,26 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     return new_visit_offset;
 }
 
-void XG::insert_threads_into_dag(const vector<thread_t>& t) {
+void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names) {
 
+    // build the names
+    string names_str;
+    for (auto& name : names) {
+        names_str.append("\0" + name);
+    }
+    construct_im(tn_csa, names_str, 1);
+    // build the bv
+    bit_vector tn_bv;
+    int i = 0;
+    for (auto c : names_str) {
+        if (c == '\0') tn_bv[i] = 1;
+        ++i;
+    }
+    // make a compressed version and its supports
+    util::assign(tn_cbv, sd_vector<>(tn_bv));
+    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
+    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+    
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
         // We have to take this destination vector and store it in whatever B_s
         // storage we are using.
