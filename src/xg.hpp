@@ -251,10 +251,11 @@ public:
     /// state.
     void insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names);
     /// Read all the threads embedded in the graph.
-    list<thread_t> extract_threads() const;
+    map<string, list<thread_t> > extract_threads(bool extract_reverse) const;
     /// Extract a particular thread by name. Name may not be empty.
-    /// TODO: Actually implement name storage for threads, so we can easily find a thread in the graph by name.
     thread_t extract_thread(const string& name) const;
+    /// Extract a set of threads matching a pattern.
+    map<string, list<thread_t> > extract_threads_matching(const string& pattern, bool reverse) const;
     /// Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
     /// Count matches to a subthread among embedded threads
@@ -294,6 +295,30 @@ public:
     /// Select only the threads (if any) starting with a particular
     /// ThreadMapping, and not those continuing through it.
     ThreadSearchState select_starting(const ThreadMapping& start) const;
+
+    /// Take a node id and side and return the side id
+    int64_t id_rev_to_side(int64_t id, bool is_rev) const;
+
+    /// Take a side and give a node id / rev pair
+    pair<int64_t, bool> side_to_id_rev(int64_t side) const;
+
+    /// The number of threads starting at this side
+    int64_t threads_starting_on_side(int64_t side) const;
+    
+    /// Given a side and offset, return the id of the thread starting there (or 0 if none)
+    int64_t thread_starting_at(int64_t side, int64_t offset) const;
+
+    /// Given a thread id and the reverse state get the starting side and offset
+    pair<int64_t, int64_t> thread_start(int64_t thread_id) const;
+
+    /// Given a thread id, return its name
+    string thread_name(int64_t thread_id) const;
+
+    /// Gives the thread start for the given thread
+    pair<int64_t, int64_t> thread_start(int64_t thread_id, bool is_rev) const;
+
+    /// Gives the thread ids of those whose names start with this pattern
+    vector<int64_t> threads_named_starting(const string& pattern) const;
     
     /// Select only the threads (if any) continuing through a particular
     /// ThreadMapping, and not those starting there.
@@ -424,17 +449,22 @@ private:
     // isn't used; we just place these by side.
     rank_select_int_vector bs_single_array;
 
-    // path name storage
+    // thread name storage
     // CSA that lets us look up names efficiently, build from ordered null-delimited names
+    // thread ids are taken to be the rank in the source text for tn_csa
     csa_bitcompressed<> tn_csa;
-    // allows us to go from positions in the CSA to ranked threads
-    //bit_vector tn_bv;
-    //rank_support_v<1> tn_bv_rank;
-    //bit_vector::select_1_type tn_bv_select;
+    // allows us to go from positions in the CSA to thread ids
+    // rank(i) gives us our thread index for a position in tn_csa's source
+    // select(i) gives us the thread name start for a given thread id
     sd_vector<> tn_cbv;
     sd_vector<>::rank_1_type tn_cbv_rank;
     sd_vector<>::select_1_type tn_cbv_select;
-    
+    // allows us to go from thread ids to thread start positions, enabling named queries of the graph
+    vlc_vector<> tin_civ; // from thread id to side id / reverse thread id to side id
+    vlc_vector<> tio_civ; // from thread id to offset / reverse thread id to offset
+    // thread starts ordered by their identifiers so we can map from sides into thread ids
+    wt_int<> side_thread_wt;
+
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
     using destination_t = size_t;
