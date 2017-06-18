@@ -2595,7 +2595,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
         if (c == '$') tn_bv[i] = 1;
         ++i;
     }
-    cerr << "name_str " << names_str << endl;
     // make a compressed version and its supports
     util::assign(tn_cbv, sd_vector<>(tn_bv));
     util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
@@ -2671,7 +2670,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
     // then again backward through the DAG.
     auto insert_in_direction = [&](bool insert_reverse) {
 
-        cerr << " insert reverse " << insert_reverse << endl;
         // First sort out the thread numbers by the node they start at.
         // We know all the threads go the same direction through each node.
         map<int64_t, list<size_t>> thread_numbers_by_start_node;
@@ -2693,7 +2691,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
                 emit_thread_start(mapping.node_id, mapping.is_reverse != insert_reverse);
             }
         }
-        cerr << "got tin/o_iv " << endl << tin_iv << endl << tio_iv << endl;
         
         // We have this message-passing architecture, where we send groups of
         // threads along edges to destination nodes. This records, by edge rank of
