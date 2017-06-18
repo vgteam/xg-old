@@ -284,6 +284,27 @@ public:
     // it out to a maximum of max_length
     thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
     // Count matches to a subthread among embedded threads
+=======
+
+    /// Insert a thread. Path name must be unique or empty.
+    void insert_thread(const thread_t& t);
+    /// Insert a whole group of threads. Names should be unique or empty (though
+    /// they aren't used yet). The indexed graph must be a DAG, at least in the
+    /// subset traversed by the threads. (Reversing edges are fine, but the
+    /// threads in a node must all run in the same direction.) This uses a
+    /// special efficient batch insert algorithm for DAGs that lets us just scan
+    /// the graph and generate nodes' B_s arrays independently. This must be
+    /// called only once, and no threads can have been inserted previously.
+    /// Otherwise the gPBWT data structures will be left in an inconsistent
+    /// state.
+    void insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names);
+    /// Read all the threads embedded in the graph.
+    map<string, list<thread_t> > extract_threads(bool extract_reverse) const;
+    /// Extract a particular thread by name. Name may not be empty.
+    thread_t extract_thread(const string& name) const;
+    /// Extract a set of threads matching a pattern.
+    map<string, list<thread_t> > extract_threads_matching(const string& pattern, bool reverse) const;
+    /// Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
     
@@ -315,6 +336,41 @@ public:
     
     // Extend a search with the given section of a thread.
     void extend_search(ThreadSearchState& state, const thread_t& t) const;
+
+    /// Extend a search with the given single ThreadMapping.
+    void extend_search(ThreadSearchState& state, const ThreadMapping& t) const;
+    
+    /// Select only the threads (if any) starting with a particular
+    /// ThreadMapping, and not those continuing through it.
+    ThreadSearchState select_starting(const ThreadMapping& start) const;
+
+    /// Take a node id and side and return the side id
+    int64_t id_rev_to_side(int64_t id, bool is_rev) const;
+
+    /// Take a side and give a node id / rev pair
+    pair<int64_t, bool> side_to_id_rev(int64_t side) const;
+
+    /// The number of threads starting at this side
+    int64_t threads_starting_on_side(int64_t side) const;
+    
+    /// Given a side and offset, return the id of the thread starting there (or 0 if none)
+    int64_t thread_starting_at(int64_t side, int64_t offset) const;
+
+    /// Given a thread id and the reverse state get the starting side and offset
+    pair<int64_t, int64_t> thread_start(int64_t thread_id) const;
+
+    /// Given a thread id, return its name
+    string thread_name(int64_t thread_id) const;
+
+    /// Gives the thread start for the given thread
+    pair<int64_t, int64_t> thread_start(int64_t thread_id, bool is_rev) const;
+
+    /// Gives the thread ids of those whose names start with this pattern
+    vector<int64_t> threads_named_starting(const string& pattern) const;
+    
+    /// Select only the threads (if any) continuing through a particular
+    /// ThreadMapping, and not those starting there.
+    ThreadSearchState select_continuing(const ThreadMapping& start) const;
 
     // Dump the whole B_s array to the given output stream as a report.
     void bs_dump(ostream& out) const;
@@ -440,7 +496,23 @@ private:
     // room for the null sentinel and the separator. Currently the separator
     // isn't used; we just place these by side.
     rank_select_int_vector bs_single_array;
-    
+
+    // thread name storage
+    // CSA that lets us look up names efficiently, build from ordered null-delimited names
+    // thread ids are taken to be the rank in the source text for tn_csa
+    csa_bitcompressed<> tn_csa;
+    // allows us to go from positions in the CSA to thread ids
+    // rank(i) gives us our thread index for a position in tn_csa's source
+    // select(i) gives us the thread name start for a given thread id
+    sd_vector<> tn_cbv;
+    sd_vector<>::rank_1_type tn_cbv_rank;
+    sd_vector<>::select_1_type tn_cbv_select;
+    // allows us to go from thread ids to thread start positions, enabling named queries of the graph
+    vlc_vector<> tin_civ; // from thread id to side id / reverse thread id to side id
+    vlc_vector<> tio_civ; // from thread id to offset / reverse thread id to offset
+    // thread starts ordered by their identifiers so we can map from sides into thread ids
+    wt_int<> side_thread_wt;
+
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
     using destination_t = size_t;
