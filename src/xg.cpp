@@ -2603,7 +2603,6 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
 
     // store the sides in order of their addition to the threads
     int_vector<> sides_ordered_by_thread_id(t.size()*2); // fwd and reverse
->>>>>>> 1ca3c2ee0b0a5d1e01af0d56d9191eadfb76348a
 
     // store the start+offset for each thread and its reverse complement
     int_vector<> tin_iv(t.size()*2+2);
@@ -3641,7 +3640,6 @@ XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
 }
 
 
->>>>>>> 1ca3c2ee0b0a5d1e01af0d56d9191eadfb76348a
 size_t serialize(XG::rank_select_int_vector& to_serialize, ostream& out,
     sdsl::structure_tree_node* parent, const std::string name) {
 #if GPBWT_MODE == MODE_SDSL

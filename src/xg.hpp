@@ -252,11 +252,14 @@ public:
     using rank_select_int_vector = dyn::rle_str;
 #endif
     
-    
     // We define a thread visit that's much smaller than a Protobuf Mapping.
     struct ThreadMapping {
         int64_t node_id;
         bool is_reverse;
+        /// We need comparison for deduplication in sets and canonically orienting threads
+        bool operator<(const ThreadMapping& other) const {
+            return tie(node_id, is_reverse) < tie(other.node_id, other.is_reverse);
+        }
     };
     
     // we have a public function for querying the contents of the h_iv vector
@@ -266,25 +269,7 @@ public:
     // Path.
     using thread_t = vector<ThreadMapping>;
     
-    // Insert a thread. Path name must be unique or empty.
-    void insert_thread(const thread_t& t);
-    // Insert a whole group of threads. Names should be unique or empty (though
-    // they aren't used yet). The indexed graph must be a DAG, at least in the
-    // subset traversed by the threads. (Reversing edges are fine, but the
-    // threads in a node must all run in the same direction.) This uses a
-    // special efficient batch insert algorithm for DAGs that lets us just scan
-    // the graph and generate nodes' B_s arrays independently. This must be
-    // called only once, and no threads can have been inserted previously.
-    // Otherwise the gPBWT data structures will be left in an inconsistent
-    // state.
-    void insert_threads_into_dag(const vector<thread_t>& t);
-    // Read all the threads embedded in the graph.
-    list<thread_t> extract_threads() const;
-    // Extract a particular thread, referring to it by its offset at node; step
-    // it out to a maximum of max_length
-    thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
     // Count matches to a subthread among embedded threads
-=======
 
     /// Insert a thread. Path name must be unique or empty.
     void insert_thread(const thread_t& t);
@@ -304,6 +289,9 @@ public:
     thread_t extract_thread(const string& name) const;
     /// Extract a set of threads matching a pattern.
     map<string, list<thread_t> > extract_threads_matching(const string& pattern, bool reverse) const;
+    /// Extract a particular thread, referring to it by its offset at node; step
+    /// it out to a maximum of max_length
+    thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
     /// Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
