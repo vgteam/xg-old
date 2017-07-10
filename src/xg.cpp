@@ -2061,7 +2061,7 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
             auto curr_queued = &queued_1;
             auto curr_path_dists = &path_dists_1;
             auto other_path_dists = &path_dists_2;
-            if (get<0>(queue_1.top()) > get<0>(queue_2.top())) {
+            if (queue_1.empty() ? true : (queue_2.empty() ? false : get<0>(queue_1.top()) > get<0>(queue_2.top()))) {
                 curr_queue = &queue_2;
                 curr_queued = &queued_2;
                 std::swap(curr_path_dists, other_path_dists);
@@ -2069,6 +2069,11 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
             
             tuple<int64_t, int64_t, bool, bool> trav = curr_queue->top();
             curr_queue->pop();
+            
+            // don't look any further if the next closest traversal is beyond the maximum distance
+            if ( get<0>(trav) > (int64_t) max_search_dist) {
+                break;
+            }
             
             int64_t dist = get<0>(trav) + node_length(get<1>(trav));
             
@@ -2085,11 +2090,6 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
                         }
                     }
                 }
-            }
-            
-            // don't look any further if we've found a path that is close to both positions
-            if ( get<0>(trav) > (int64_t) max_search_dist) {
-                break;
             }
             
             // move in the search direction away from this node traversal and queue them up
