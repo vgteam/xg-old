@@ -2055,7 +2055,7 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
         queued_1.emplace(id1, rev1);
         queued_2.emplace(id2, rev2);
         
-        while (!(queue_1.empty() && queue_2.empty())) {
+        while (!(queue_1.empty() && queue_2.empty()) && shared_paths.empty()) {
             // get the queue that has the next shortest path
             auto curr_queue = &queue_1;
             auto curr_queued = &queued_1;
