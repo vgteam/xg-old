@@ -358,10 +358,20 @@ int main(int argc, char** argv) {
     }
     
     if (extract_threads) {
-        
-    
+        list<XG::thread_t> threads;
+        for (auto& p : graph->extract_threads(false)) {
+            for (auto& t : p.second) {
+                threads.push_back(t);
+            }
+        }
+        for (auto& p : graph->extract_threads(true)) {
+            for (auto& t : p.second) {
+                threads.push_back(t);
+            }
+        }
+
         size_t thread_number = 0;
-        for(XG::thread_t& thread : graph->extract_threads()) {
+        for(XG::thread_t& thread : threads) {
             // Convert to a Path
             Path path;
             for(XG::ThreadMapping& m : thread) {

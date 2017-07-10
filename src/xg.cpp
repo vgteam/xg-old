@@ -144,6 +144,14 @@ void XG::load(istream& in) {
     t_to_end_cbv.load(in);
     t_from_start_cbv.load(in);
 
+    tn_csa.load(in);
+    tn_cbv.load(in);
+    tn_cbv_rank.load(in, &tn_cbv);
+    tn_cbv_select.load(in, &tn_cbv);
+    tin_civ.load(in);
+    tio_civ.load(in);
+    side_thread_wt.load(in);
+    
     pn_iv.load(in);
     pn_csa.load(in);
     pn_bv.load(in);
@@ -167,6 +175,7 @@ void XG::load(istream& in) {
     // Load all the B_s arrays for sides.
     // Baking required before serialization.
     deserialize(bs_single_array, in);
+
 }
 
 void XGPath::load(istream& in) {
@@ -368,6 +377,15 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     written += t_to_end_cbv.serialize(out, child, "to_is_to_end");
     written += t_from_start_cbv.serialize(out, child, "to_is_from_start");
 
+    // save the thread name index
+    written += tn_csa.serialize(out, child, "thread_name_csa");
+    written += tn_cbv.serialize(out, child, "thread_name_cbv");
+    written += tn_cbv_rank.serialize(out, child, "thread_name_cbv_rank");
+    written += tn_cbv_select.serialize(out, child, "thread_name_cbv_select");
+    written += tin_civ.serialize(out, child, "thread_start_node_civ");
+    written += tio_civ.serialize(out, child, "thread_start_offset_civ");
+    written += side_thread_wt.serialize(out, child, "side_thread_wt");
+
     // Treat the paths as their own node
     size_t paths_written = 0;
     auto paths_child = sdsl::structure_tree::add_child(child, "paths", sdsl::util::class_name(*this));
@@ -395,6 +413,7 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
     // Treat the threads as their own node.
     // This will mess up any sort of average size stats, but it will also be useful.
     auto threads_child = sdsl::structure_tree::add_child(child, "threads", sdsl::util::class_name(*this));
+    
     size_t threads_written = 0;
     threads_written += h_iv.serialize(out, threads_child, "thread_usage_count");
     threads_written += ts_iv.serialize(out, threads_child, "thread_start_count");
@@ -799,7 +818,7 @@ void XG::build(map<id_t, string>& node_label,
 #if GPBWT_MODE == MODE_SDSL
         if(is_sorted_dag) {
             // Do the batch insert
-            insert_threads_into_dag(batch);
+            insert_threads_into_dag(batch, {});
         }
         // TODO: else case!
 #endif
@@ -1030,8 +1049,14 @@ void XG::build(map<id_t, string>& node_label,
             size_t threads_found = 0;
             // And how many shoukd we have inserted?
             size_t threads_expected = 0;
-            
-            for(auto thread : extract_threads()) {
+            list<thread_t> threads;
+            for (auto& t : extract_threads(false)) {
+                for (auto& k : t.second) threads.push_back(k);
+            }
+            for (auto& t : extract_threads(true)) {
+                for (auto& k : t.second) threads.push_back(k);
+            }
+            for(auto thread : threads) {
 #ifdef VERBOSE_DEBUG
                 cerr << "Thread: ";
                 for(size_t i = 0; i < thread.size(); i++) {
@@ -1173,11 +1198,11 @@ size_t XG::id_to_rank(int64_t id) const {
 int64_t XG::rank_to_id(size_t rank) const {
     if(rank == 0) {
         cerr << "[xg] error: Request for id of rank 0" << endl;
-        exit(1);
+        assert(false);
     }
     if(rank > i_iv.size()) {
         cerr << "[xg] error: Request for id of rank " << rank << "/" << i_iv.size() << endl;
-        exit(1);
+        assert(false);
     }
     return i_iv[rank-1];
 }
@@ -1422,7 +1447,6 @@ size_t XG::path_rank(const string& name) const {
 }
 
 string XG::path_name(size_t rank) const {
-    //cerr << "path rank " << rank << endl;
     size_t start = pn_bv_select(rank)+1; // step past '#'
     size_t end = rank == path_count ? pn_iv.size() : pn_bv_select(rank+1);
     end -= 1;  // step before '$'
@@ -2401,35 +2425,59 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     // Given that we were at visit_offset on the current side, where will we be
     // on the new side? 
     
-    // What will the new visit offset be?
-    int64_t new_visit_offset = 0;
-    
     // Work out where we're going as a node and orientation
     int64_t new_node_id = rank_to_id(new_side / 2);
     bool new_node_is_reverse = new_side % 2;
-    
-    // Work out what edges are going into the place we're going into.
-    vector<Edge> edges = new_node_is_reverse ? edges_on_end(new_node_id) : edges_on_start(new_node_id);
     
     // Work out what node and orientation we came from
     int64_t old_node_id = rank_to_id(current_side / 2);
     bool old_node_is_reverse = current_side % 2;
     
+    // Work out what edges are going into the place we're going into.
+    vector<Edge> edges = new_node_is_reverse ? edges_on_end(new_node_id) : edges_on_start(new_node_id);
+    
+    // Look at the edges we could have taken next
+    vector<Edge> edges_out = old_node_is_reverse ? edges_on_start(old_node_id) : edges_on_end(old_node_id);
+    
+    return where_to(current_side, visit_offset, new_side, edges, edges_out);
+}
+
+int64_t XG::node_height(XG::ThreadMapping node) const {
+  return h_iv[(node_rank_as_entity(node.node_id) - 1) * 2 + node.is_reverse];
+}
+
+int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_side, vector<Edge>& edges_into_new, vector<Edge>& edges_out_of_old) const {
+    // Given that we were at visit_offset on the current side, where will we be
+    // on the new side?
+
+    // What will the new visit offset be?
+    int64_t new_visit_offset = 0;
+
+    // Work out where we're going as a node and orientation
+    int64_t new_node_id = rank_to_id(new_side / 2);
+    bool new_node_is_reverse = new_side % 2;
+
+    // Work out what edges are going into the place we're going into.
+
+    // Work out what node and orientation we came from
+    int64_t old_node_id = rank_to_id(current_side / 2);
+    bool old_node_is_reverse = current_side % 2;
+
     // What edge are we following
     Edge edge_taken = make_edge(old_node_id, old_node_is_reverse, new_node_id, new_node_is_reverse);
-    
+
     // Make sure we find it
     bool edge_found = false;
-    
-    for(auto& edge : edges) {
+
+    for(auto& edge : edges_into_new) {
         // Look at every edge in order.
-        
+
         if(edges_equivalent(edge, edge_taken)) {
             // If we found the edge we're taking, break.
             edge_found = true;
             break;
         }
-        
+
         // Otherwise add in the threads on this edge to the offset
 
         // Get the orientation number for this edge (which is *not* the edge we
@@ -2437,32 +2485,31 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
         // treat it as reverse if the reverse direction is the only direction we
         // can take to get here.
         int64_t edge_orientation_number = ((edge_rank_as_entity(edge) - 1) * 2) + arrive_by_reverse(edge, new_node_id, new_node_is_reverse);
-        
+
         int64_t contribution = h_iv[edge_orientation_number];
 #ifdef VERBOSE_DEBUG
         cerr << contribution << " (from prev edge " << edge.from() << (edge.from_start() ? "L" : "R") << "-" << edge.to() << (edge.to_end() ? "R" : "L") << " at " << edge_orientation_number << ") + ";
 #endif
         new_visit_offset += contribution;
     }
-    
+
     assert(edge_found);
-    
+
     // What edge out of all the edges we can take are we taking?
     int64_t edge_taken_index = -1;
-    
+
     // Look at the edges we could have taken next
-    vector<Edge> edges_out = old_node_is_reverse ? edges_on_start(old_node_id) : edges_on_end(old_node_id);
-    
-    for(int64_t i = 0; i < edges_out.size(); i++) {
-        if(edges_equivalent(edges_out[i], edge_taken)) {
+
+    for(int64_t i = 0; i < edges_out_of_old.size(); i++) {
+        if(edges_equivalent(edges_out_of_old[i], edge_taken)) {
             // i is the index of the edge we took, of the edges available to us.
             edge_taken_index = i;
             break;
         }
     }
-    
+
     assert(edge_taken_index != -1);
-    
+
     // Get the rank in B_s[] for our current side of our visit offset among
     // B_s[] entries pointing to the new node and add that in. Make sure to +2
     // to account for the nulls and separators.
@@ -2471,7 +2518,7 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
     cerr << contribution << " (via this edge) + ";
 #endif
     new_visit_offset += contribution;
-    
+
     // Get the number of threads starting at the new side and add that in.
     contribution = ts_iv[new_side];
 #ifdef VERBOSE_DEBUG
@@ -2481,15 +2528,86 @@ int64_t XG::where_to(int64_t current_side, int64_t visit_offset, int64_t new_sid
 #ifdef VERBOSE_DEBUG
     cerr << new_visit_offset << endl;
 #endif
-    
+
     // Now we know where it actually ends up: after all the threads that start,
     // all the threads that come in via earlier edges, and all the previous
     // threads going there that come via this edge.
     return new_visit_offset;
 }
 
-void XG::insert_threads_into_dag(const vector<thread_t>& t) {
+XG::thread_t XG::extract_thread(xg::XG::ThreadMapping node, int64_t offset = 0, int64_t max_length = 0) {
+  thread_t path;
+  int64_t side = (node.node_id)*2 + node.is_reverse;
+  bool continue_search = true;
+  while(continue_search) {
+    xg::XG::ThreadMapping m = {rank_to_id(side / 2), (bool) (side % 2)};
+    path.push_back(m);
+    // Work out where we go:
+    // What edge of the available edges do we take?
+    int64_t edge_index = bs_get(side, offset);
+    assert(edge_index != BS_SEPARATOR);
+    if(edge_index == BS_NULL) {
+        // Path ends here.
+        break;
+    } else {
+        // If we've got an edge, convert to an actual edge index
+        edge_index -= 2;
+    }
+    // We also should not have negative edges.
+    assert(edge_index >= 0);
+    // Look at the edges we could have taken next
+    vector<Edge> edges_out = side % 2 ? edges_on_start(rank_to_id(side / 2)) :
+          edges_on_end(rank_to_id(side / 2));
+    assert(edge_index < edges_out.size());
+    Edge& taken = edges_out[edge_index];
+    // Follow the edge
+    int64_t other_node = taken.from() == rank_to_id(side / 2) ? taken.to() :
+          taken.from();
+    bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+    // Get the side
+    int64_t other_side = id_to_rank(other_node) * 2 + other_orientation;
+    // Go there with where_to
+    offset = where_to(side, offset, other_side);
+    side = other_side;
+    // Continue the process from this new side
+    if(max_length != 0) {
+      if(path.size() >= max_length) {
+        continue_search = false;
+      }
+    }
+  }
+  return path;
+}
 
+void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names) {
+
+    // build the names
+    string names_str;
+    for (auto& name : names) {
+        names_str.append("$" + name);
+    }
+    names_str.append("$"); // tail marker to avoid edge case
+    construct_im(tn_csa, names_str, 1);
+    // build the bv
+    bit_vector tn_bv(names_str.size());
+    int i = 0;
+    for (auto c : names_str) {
+        if (c == '$') tn_bv[i] = 1;
+        ++i;
+    }
+    // make a compressed version and its supports
+    util::assign(tn_cbv, sd_vector<>(tn_bv));
+    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
+    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+
+    // store the sides in order of their addition to the threads
+    int_vector<> sides_ordered_by_thread_id(t.size()*2); // fwd and reverse
+
+    // store the start+offset for each thread and its reverse complement
+    int_vector<> tin_iv(t.size()*2+2);
+    int_vector<> tio_iv(t.size()*2+2);
+    int thread_count = 0;
+    
     auto emit_destinations = [&](int64_t node_id, bool is_reverse, vector<size_t> destinations) {
         // We have to take this destination vector and store it in whatever B_s
         // storage we are using.
@@ -2533,11 +2651,15 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
         // orientation. We have to update our thread start succinct data
         // structure.
         
-        int64_t node_side = id_to_rank(node_id) * 2 + is_reverse;
+        int64_t node_side = id_rev_to_side(node_id, is_reverse);
         
         // Say we start one more thread on this side.
         ts_iv[node_side]++;
-        
+        // Record the side
+        sides_ordered_by_thread_id[thread_count] = node_side;
+        // Sum the number of threads
+        thread_count++;
+
 #ifdef VERBOSE_DEBUG
         cerr << "A thread starts at " << node_side << " for " <<  node_id << (is_reverse ? "-" : "+") << endl;
 #endif
@@ -2558,7 +2680,12 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
                 size_t thread_start = insert_reverse ? t[i].size() - 1 : 0;
                 auto& mapping = t[i][thread_start];
                 thread_numbers_by_start_node[mapping.node_id].push_back(i);
-                
+                // we know the mapping node id and rank
+                // so we can construct the start position for this entity
+                int k = 2*(i+1) + insert_reverse;
+                tin_iv[k] = mapping.node_id;
+                // nb: the rank of this thread among those starting at this side
+                tio_iv[k] = thread_numbers_by_start_node[mapping.node_id].size()-1;
                 // Say a thread starts here, going in the orientation determined
                 // by how the node is visited and how we're traversing the path.
                 emit_thread_start(mapping.node_id, mapping.is_reverse != insert_reverse);
@@ -2722,8 +2849,13 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t) {
     cerr << "Creating final compressed array..." << endl;
 #endif
     bs_bake();
-    
-    
+
+    // compress the starts for the threads
+    util::assign(tin_civ, int_vector<>(tin_iv));
+    util::assign(tio_civ, int_vector<>(tio_iv));
+    util::bit_compress(sides_ordered_by_thread_id);
+    // and build up the side wt
+    construct_im(side_thread_wt, sides_ordered_by_thread_id);
 }
 
 void XG::insert_thread(const thread_t& t) {
@@ -2917,22 +3049,97 @@ void XG::insert_thread(const thread_t& t) {
     
 }
 
-auto XG::extract_threads() const -> list<thread_t> {
+auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> map<string, list<thread_t>> {
+
+    map<string, list<thread_t> > found;
+
+    // get the set of threads that match the given pattern
+    // for each thread, get its start position
+    vector<int64_t> threads = threads_named_starting(pattern);
+    for (auto& id : threads) {
+        // For every thread starting there
+        // make a new thread
+        thread_t path;
+
+        // Get the name of this thread
+        string path_name = thread_name(id);
+
+        // Start the side at i and the offset at j
+        auto p = thread_start(id, reverse);
+        int64_t side = id_rev_to_side(p.first, reverse);
+        int64_t offset = p.second;
+
+        while(true) {
+                
+            // Unpack the side into a node traversal
+            ThreadMapping m = {rank_to_id(side/2), (bool) (side % 2)};
+
+            // Add the mapping to the thread
+            path.push_back(m);
+                
+            // Work out where we go
+                
+            // What edge of the available edges do we take?
+            int64_t edge_index = bs_get(side, offset);
+                
+            // If we find a separator, we're very broken.
+            assert(edge_index != BS_SEPARATOR);
+                
+            if(edge_index == BS_NULL) {
+                // Path ends here.
+                break;
+            } else {
+                // Convert to an actual edge index
+                edge_index -= 2;
+            }
+                
+            // We also should not have negative edges.
+            assert(edge_index >= 0);
+                
+            // Look at the edges we could have taken next
+            vector<Edge> edges_out = side % 2 ? edges_on_start(rank_to_id(side / 2)) : edges_on_end(rank_to_id(side / 2));
+                
+            assert(edge_index < edges_out.size());
+                
+            Edge& taken = edges_out[edge_index];
+                
+            // Follow the edge
+            int64_t other_node = taken.from() == rank_to_id(side / 2) ? taken.to() : taken.from();
+            bool other_orientation = (side % 2) != taken.from_start() != taken.to_end();
+                
+            // Get the side 
+            int64_t other_side = id_to_rank(other_node) * 2 + other_orientation;
+                
+            // Go there with where_to
+            offset = where_to(side, offset, other_side);
+            side = other_side;
+    
+        }
+            
+        found[path_name].push_back(path);
+            
+    }
+    
+    return found;
+    
+}
+
+auto XG::extract_threads(bool extract_reverse) const -> map<string, list<thread_t>> {
 
     // Fill in a lsut of paths found
-    list<thread_t> found;
+    map<string, list<thread_t> > found;
 
 #ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
 #endif
-
-    for(int64_t i = 1; i < ts_iv.size(); i++) {
+    int64_t begin = !extract_reverse ? 2 : 3;
+    int64_t end = !extract_reverse ? ts_iv.size() : ts_iv.size()-1;
+    for(int64_t i = begin; i < end; i+=2) {
         // For each real side
     
 #ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
 #endif
-    
         // For each side
         if(ts_iv[i] == 0) {
             // Skip it if no threads start at it
@@ -2952,7 +3159,10 @@ auto XG::extract_threads() const -> list<thread_t> {
             // Start the side at i and the offset at j
             int64_t side = i;
             int64_t offset = j;
-            
+
+            // Get the name of this thread
+            string path_name = thread_name(thread_starting_at(side, offset));
+
             while(true) {
                 
                 // Unpack the side into a node traversal
@@ -3015,7 +3225,7 @@ auto XG::extract_threads() const -> list<thread_t> {
     
             }
             
-            found.push_back(path);
+            found[path_name].push_back(path);
             
         }
     }
@@ -3348,6 +3558,40 @@ void XG::extend_search(ThreadSearchState& state, const ThreadMapping& t) const {
     extend_search(state, thread_t{t});
 }
 
+int64_t XG::threads_starting_on_side(int64_t side) const {
+    return side_thread_wt.rank(side_thread_wt.size(), side);
+}
+
+int64_t XG::thread_starting_at(int64_t side, int64_t offset) const {
+    return side_thread_wt.select(offset+1, side)+1;
+}
+
+pair<int64_t, int64_t> XG::thread_start(int64_t thread_id, bool is_rev) const {
+    int64_t idx = thread_id*2 + is_rev;
+    return make_pair(tin_civ[idx], tio_civ[idx]);
+}
+
+string XG::thread_name(int64_t thread_id) const {
+    // convert to forward thread
+    if (thread_id > side_thread_wt.size()/2) {
+        thread_id -= side_thread_wt.size()/2;
+    }
+    return extract(tn_csa,
+                   tn_cbv_select(thread_id)+1, // skip delimiter
+                   tn_cbv_select(thread_id+1)-1); // to next-1
+}
+
+vector<int64_t> XG::threads_named_starting(const string& pattern) const {
+    vector<int64_t> results;
+    // threads named starting with this, so add the sep character so our occs give us thread ids
+    auto occs = locate(tn_csa, "$" + pattern);
+    // for each occurrance get the thread id
+    for (size_t i = 0; i < occs.size(); ++i) {
+        results.push_back(tn_cbv_rank(occs[i])+1);
+    }
+    return results;
+}
+
 XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
     // We need to select just the threads starting at this node with this
     // mapping, rather than those coming in from elsewhere.
@@ -3356,7 +3600,7 @@ XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
     ThreadSearchState state;
     
     // Say we've searched this ThreadMapping's side.    
-    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    state.current_side = id_rev_to_side(start.node_id, start.is_reverse);
     
     // Threads starting at a node come first, so select from 0 to the number of
     // threads that start there.
@@ -3366,6 +3610,14 @@ XG::ThreadSearchState XG::select_starting(const ThreadMapping& start) const {
     return state;
 }
 
+int64_t XG::id_rev_to_side(int64_t id, bool is_rev) const {
+    return id_to_rank(id) * 2 + is_rev;
+}
+
+pair<int64_t, bool> XG::side_to_id_rev(int64_t side) const {
+    return make_pair(side / 2, side % 2);
+}
+
 XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
     // We need to select just the threads coming in from elsewhere, and not
     // those starting here.
@@ -3373,8 +3625,8 @@ XG::ThreadSearchState XG::select_continuing(const ThreadMapping& start) const {
     // Make a search state with nothing searched
     ThreadSearchState state;
     
-    // Say we've searched this ThreadMapping's side.    
-    state.current_side = id_to_rank(start.node_id) * 2 + start.is_reverse;
+    // Say we've searched this ThreadMapping's side.
+    state.current_side = id_rev_to_side(start.node_id, start.is_reverse);
     
     // Threads starting at a node come first, so select from past them to the
     // number of threads total on the node.
