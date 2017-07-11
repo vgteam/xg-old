@@ -3118,16 +3118,19 @@ auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> 
 
 auto XG::extract_threads(bool extract_reverse) const -> map<string, list<thread_t>> {
 
-    // Fill in a lsut of paths found
+    // Fill in a map of lists of paths found by name
     map<string, list<thread_t> > found;
 
 #ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
 #endif
+    // We consider "reverse" threads to be those that start on the higher-
+    // numbered sides of their nodes.
+    // We know sides 0 and 1 are unused, so the smallest side is 2.
     int64_t begin = !extract_reverse ? 2 : 3;
-    int64_t end = !extract_reverse ? ts_iv.size() : ts_iv.size()-1;
+    int64_t end = !extract_reverse ? ts_iv.size()-1 : ts_iv.size();
     for(int64_t i = begin; i < end; i+=2) {
-        // For each real side
+        // For every other real side
     
 #ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
