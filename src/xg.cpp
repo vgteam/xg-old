@@ -788,6 +788,7 @@ void XG::build(map<id_t, string>& node_label,
         // If we're a sorted DAG we'll batch up the paths and use a batch
         // insert.
         vector<thread_t> batch;
+        vector<string> batch_names;
     
         // Just store all the paths that are all perfect mappings as threads.
         // We end up converting *back* into thread_t objects.
@@ -806,11 +807,12 @@ void XG::build(map<id_t, string>& node_label,
             if(is_sorted_dag) {
                 // Save for a batch insert
                 batch.push_back(reconstructed);
+                batch_names.push_back(pathpair.first);
             }
             // TODO: else case!
 #elif GPBWT_MODE == MODE_DYNAMIC
             // Insert the thread right now
-            insert_thread(reconstructed);
+            insert_thread(reconstructed, pathpair.first);
 #endif
             
         }
@@ -818,7 +820,7 @@ void XG::build(map<id_t, string>& node_label,
 #if GPBWT_MODE == MODE_SDSL
         if(is_sorted_dag) {
             // Do the batch insert
-            insert_threads_into_dag(batch, {});
+            insert_threads_into_dag(batch, batch_names);
         }
         // TODO: else case!
 #endif
@@ -2581,24 +2583,14 @@ XG::thread_t XG::extract_thread(xg::XG::ThreadMapping node, int64_t offset = 0, 
 
 void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names) {
 
-    // build the names
-    string names_str;
+    // Store the names
     for (auto& name : names) {
         names_str.append("$" + name);
     }
-    names_str.append("$"); // tail marker to avoid edge case
-    construct_im(tn_csa, names_str, 1);
-    // build the bv
-    bit_vector tn_bv(names_str.size());
-    int i = 0;
-    for (auto c : names_str) {
-        if (c == '$') tn_bv[i] = 1;
-        ++i;
-    }
-    // make a compressed version and its supports
-    util::assign(tn_cbv, sd_vector<>(tn_bv));
-    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
-    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+#ifdef VERBOSE_DEBUG
+    cerr << "Compressing thread names..." << endl;
+#endif
+    tn_bake();
 
     // store the sides in order of their addition to the threads
     int_vector<> sides_ordered_by_thread_id(t.size()*2); // fwd and reverse
@@ -2849,7 +2841,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
     cerr << "Creating final compressed array..." << endl;
 #endif
     bs_bake();
-
+    
     // compress the starts for the threads
     util::assign(tin_civ, int_vector<>(tin_iv));
     util::assign(tio_civ, int_vector<>(tio_iv));
@@ -2858,7 +2850,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
     construct_im(side_thread_wt, sides_ordered_by_thread_id);
 }
 
-void XG::insert_thread(const thread_t& t) {
+void XG::insert_thread(const thread_t& t, const string& name) {
     // We're going to insert this thread
     
     auto insert_thread_forward = [&](const thread_t& thread) {
@@ -3045,8 +3037,8 @@ void XG::insert_thread(const thread_t& t) {
     // Insert reverse
     insert_thread_forward(simple_reverse(t));
     
-    // TODO: name annotation
-    
+    // Save the name
+    names_str.append("$" + name);
 }
 
 auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> map<string, list<thread_t>> {
@@ -3126,16 +3118,19 @@ auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> 
 
 auto XG::extract_threads(bool extract_reverse) const -> map<string, list<thread_t>> {
 
-    // Fill in a lsut of paths found
+    // Fill in a map of lists of paths found by name
     map<string, list<thread_t> > found;
 
 #ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
 #endif
+    // We consider "reverse" threads to be those that start on the higher-
+    // numbered sides of their nodes.
+    // We know sides 0 and 1 are unused, so the smallest side is 2.
     int64_t begin = !extract_reverse ? 2 : 3;
-    int64_t end = !extract_reverse ? ts_iv.size() : ts_iv.size()-1;
+    int64_t end = !extract_reverse ? ts_iv.size()-1 : ts_iv.size();
     for(int64_t i = begin; i < end; i+=2) {
-        // For each real side
+        // For every other real side
     
 #ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
@@ -3386,6 +3381,25 @@ void XG::bs_bake() {
     bs_arrays.clear();
 #endif
 }
+
+void XG::tn_bake() {
+    names_str.append("$"); // tail marker to avoid edge case
+    construct_im(tn_csa, names_str, 1);
+    // build the bv
+    bit_vector tn_bv(names_str.size());
+    int i = 0;
+    for (auto c : names_str) {
+        if (c == '$') tn_bv[i] = 1;
+        ++i;
+    }
+    names_str.clear();
+    
+    // make a compressed version and its supports
+    util::assign(tn_cbv, sd_vector<>(tn_bv));
+    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
+    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+}
+
 
 void XG::bs_dump(ostream& out) const {
 #if GPBWT_MODE == MODE_SDSL
