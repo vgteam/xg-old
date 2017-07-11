@@ -788,6 +788,7 @@ void XG::build(map<id_t, string>& node_label,
         // If we're a sorted DAG we'll batch up the paths and use a batch
         // insert.
         vector<thread_t> batch;
+        vector<string> batch_names;
     
         // Just store all the paths that are all perfect mappings as threads.
         // We end up converting *back* into thread_t objects.
@@ -806,11 +807,12 @@ void XG::build(map<id_t, string>& node_label,
             if(is_sorted_dag) {
                 // Save for a batch insert
                 batch.push_back(reconstructed);
+                batch_names.push_back(pathpair.first);
             }
             // TODO: else case!
 #elif GPBWT_MODE == MODE_DYNAMIC
             // Insert the thread right now
-            insert_thread(reconstructed);
+            insert_thread(reconstructed, pathpair.first);
 #endif
             
         }
@@ -818,7 +820,7 @@ void XG::build(map<id_t, string>& node_label,
 #if GPBWT_MODE == MODE_SDSL
         if(is_sorted_dag) {
             // Do the batch insert
-            insert_threads_into_dag(batch, {});
+            insert_threads_into_dag(batch, batch_names);
         }
         // TODO: else case!
 #endif
