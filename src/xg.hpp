@@ -271,8 +271,9 @@ public:
     
     // Count matches to a subthread among embedded threads
 
-    /// Insert a thread. Path name must be unique or empty.
-    void insert_thread(const thread_t& t);
+    /// Insert a thread. Name must be unique or empty.
+    /// bs_bake() and tn_bake() need to be called before queries.
+    void insert_thread(const thread_t& t, const string& name);
     /// Insert a whole group of threads. Names should be unique or empty (though
     /// they aren't used yet). The indexed graph must be a DAG, at least in the
     /// subset traversed by the threads. (Reversing edges are fine, but the
@@ -500,6 +501,10 @@ private:
     vlc_vector<> tio_civ; // from thread id to offset / reverse thread id to offset
     // thread starts ordered by their identifiers so we can map from sides into thread ids
     wt_int<> side_thread_wt;
+    
+    // Holds the names of threads while they are being inserted, before the
+    // succinct name representation is built.
+    string names_str;
 
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
@@ -526,6 +531,9 @@ private:
     // Prepare the B_s array data structures for query. After you call this, you
     // shouldn't call bset or bs_insert.
     void bs_bake();
+    
+    // Prepare the succinct thread name representation for queries
+    void tn_bake();
 };
 
 class XGPath {
