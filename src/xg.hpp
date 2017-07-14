@@ -48,7 +48,18 @@ bool trav_is_rev(const trav_t& trav);
 int32_t trav_rank(const trav_t& trav);
 trav_t make_trav(id_t id, bool is_end, int32_t rank);
 
+/**
+ * Thrown when attempting to interpret invalid data as an XG index.
+ */
+class XGFormatError : public runtime_error {
+    // Use the runtime_error constructor
+    using runtime_error::runtime_error;
+};
 
+/**
+ * Provides succinct storage for a graph, its positional paths, and a set of
+ * embedded threads.
+ */
 class XG {
 public:
     
@@ -59,6 +70,9 @@ public:
                edge_count(0),
                path_count(0) { }
     ~XG(void);
+    
+    // Construct an XG index by loading from a stream. Throw an XGFormatError if
+    // the stream does not produce a valid XG file.
     XG(istream& in);
     XG(Graph& graph);
     XG(function<void(function<void(Graph&)>)> get_chunks);
@@ -92,10 +106,20 @@ public:
                bool print_graph,
                bool store_threads,
                bool is_sorted_dag);
+               
+    // What's the maximum XG version number we can read with this code?
+    const static uint32_t MAX_INPUT_VERSION = 1;
+    // What's the version we serialize?
+    const static uint32_t OUTPUT_VERSION = 1;
+               
+    // Load this XG index from a stream. Throw an XGFormatError if the stream
+    // does not produce a valid XG file.
     void load(istream& in);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "");
+                     
+                     
     size_t seq_length;
     size_t node_count;
     size_t edge_count;
