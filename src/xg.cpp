@@ -3,7 +3,8 @@
 
 #include <bitset>
 
-//#define VERBOSE_DEBUG
+#define debug
+#define VERBOSE_DEBUG
 
 namespace xg {
 
