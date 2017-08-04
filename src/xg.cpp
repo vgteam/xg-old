@@ -2,6 +2,7 @@
 #include "stream.hpp"
 
 #include <bitset>
+#include <arpa/inet.h>
 
 //#define VERBOSE_DEBUG
 //#define debug_algorithms
@@ -110,72 +111,134 @@ XG::~XG(void) {
 void XG::load(istream& in) {
 
     if (!in.good()) {
-        cerr << "[xg] error: index does not exist!" << endl;
-        exit(1);
+        throw XGFormatError("Index file does not exist or index stream cannot be read");
     }
 
-    sdsl::read_member(seq_length, in);
-    sdsl::read_member(node_count, in);
-    sdsl::read_member(edge_count, in);
-    sdsl::read_member(path_count, in);
-    size_t entity_count = node_count + edge_count;
-    //cerr << sequence_length << ", " << node_count << ", " << edge_count << endl;
-    sdsl::read_member(min_id, in);
-    sdsl::read_member(max_id, in);
+    // Version 0 is the last XG format without an explicit version specifier.
+    // If we find a version specifier we will up this.
+    uint32_t file_version = 0;
 
-    i_iv.load(in);
-    r_iv.load(in);
-
-    s_iv.load(in);
-    s_cbv.load(in);
-    s_cbv_rank.load(in, &s_cbv);
-    s_cbv_select.load(in, &s_cbv);
-
-    f_iv.load(in);
-    f_bv.load(in);
-    f_bv_rank.load(in, &f_bv);
-    f_bv_select.load(in, &f_bv);
-    f_from_start_cbv.load(in);
-    f_to_end_cbv.load(in);
-
-    t_iv.load(in);
-    t_bv.load(in);
-    t_bv_rank.load(in, &t_bv);
-    t_bv_select.load(in, &t_bv);
-    t_to_end_cbv.load(in);
-    t_from_start_cbv.load(in);
-
-    tn_csa.load(in);
-    tn_cbv.load(in);
-    tn_cbv_rank.load(in, &tn_cbv);
-    tn_cbv_select.load(in, &tn_cbv);
-    tin_civ.load(in);
-    tio_civ.load(in);
-    side_thread_wt.load(in);
-    
-    pn_iv.load(in);
-    pn_csa.load(in);
-    pn_bv.load(in);
-    pn_bv_rank.load(in, &pn_bv);
-    pn_bv_select.load(in, &pn_bv);
-    pi_iv.load(in);
-    sdsl::read_member(path_count, in);
-    for (size_t i = 0; i < path_count; ++i) {
-        auto path = new XGPath;
-        path->load(in);
-        paths.push_back(path);
+    // We need to look for the magic value
+    char buffer;
+    in.get(buffer);
+    if (buffer == 'X') {
+        in.get(buffer);
+        if (buffer == 'G') {
+            // We found the magic value!
+            
+            // Don't put it back, but the next 4 bytes are a version number.
+            in.read((char*) &file_version, sizeof(file_version));
+            // Make sure to convert from network to host byte order
+            file_version = ntohl(file_version);
+            
+        } else {
+            // Put back both characters
+            in.unget();
+            in.unget();
+        }        
+    } else {
+        // Put back the one character
+        in.unget();
     }
-    ep_iv.load(in);
-    ep_bv.load(in);
-    ep_bv_rank.load(in, &ep_bv);
-    ep_bv_select.load(in, &ep_bv);
     
-    h_iv.load(in);
-    ts_iv.load(in);
+    if (file_version > MAX_INPUT_VERSION) {
+        // This XG file is from the distant future.
+        throw XGFormatError("XG index file version " + to_string(file_version) +
+            " is too new to interpret (max version = " + to_string(MAX_INPUT_VERSION) + ")");
+    }
+    
+    try {
+        
+        ////////////////////////////////////////////////////////////////////////
+        // DO NOT CHANGE THIS CODE without creating a new XG version:
+        // 1. Increment OUTPUT_VERSION to a new integer.
+        // 2. Change the serialization code.
+        // 3. Add a new case here with new deserialization code.
+        // 4. Up MAX_INPUT_VERSION to allow your new version to be read.
+        ////////////////////////////////////////////////////////////////////////
+        switch (file_version) {
+        
+        case 0:
+        case 1:
+            {
+                sdsl::read_member(seq_length, in);
+                sdsl::read_member(node_count, in);
+                sdsl::read_member(edge_count, in);
+                sdsl::read_member(path_count, in);
+                size_t entity_count = node_count + edge_count;
+                //cerr << sequence_length << ", " << node_count << ", " << edge_count << endl;
+                sdsl::read_member(min_id, in);
+                sdsl::read_member(max_id, in);
 
-    // Load all the B_s arrays for sides.
-    // Baking required before serialization.
-    deserialize(bs_single_array, in);
+                i_iv.load(in);
+                r_iv.load(in);
+
+                s_iv.load(in);
+                s_cbv.load(in);
+                s_cbv_rank.load(in, &s_cbv);
+                s_cbv_select.load(in, &s_cbv);
+
+                f_iv.load(in);
+                f_bv.load(in);
+                f_bv_rank.load(in, &f_bv);
+                f_bv_select.load(in, &f_bv);
+                f_from_start_cbv.load(in);
+                f_to_end_cbv.load(in);
+
+                t_iv.load(in);
+                t_bv.load(in);
+                t_bv_rank.load(in, &t_bv);
+                t_bv_select.load(in, &t_bv);
+                t_to_end_cbv.load(in);
+                t_from_start_cbv.load(in);
+
+                tn_csa.load(in);
+                tn_cbv.load(in);
+                tn_cbv_rank.load(in, &tn_cbv);
+                tn_cbv_select.load(in, &tn_cbv);
+                tin_civ.load(in);
+                tio_civ.load(in);
+                side_thread_wt.load(in);
+                
+                pn_iv.load(in);
+                pn_csa.load(in);
+                pn_bv.load(in);
+                pn_bv_rank.load(in, &pn_bv);
+                pn_bv_select.load(in, &pn_bv);
+                pi_iv.load(in);
+                sdsl::read_member(path_count, in);
+                for (size_t i = 0; i < path_count; ++i) {
+                    auto path = new XGPath;
+                    path->load(in);
+                    paths.push_back(path);
+                }
+                ep_iv.load(in);
+                ep_bv.load(in);
+                ep_bv_rank.load(in, &ep_bv);
+                ep_bv_select.load(in, &ep_bv);
+                
+                h_iv.load(in);
+                ts_iv.load(in);
+
+                // Load all the B_s arrays for sides.
+                // Baking required before serialization.
+                deserialize(bs_single_array, in);
+            }
+            break;
+        default:
+            throw XGFormatError("Unimplemented XG format version: " + to_string(file_version));
+        }
+    } catch (const XGFormatError& e) {
+        // Pass XGFormatErrors through
+        throw e;
+    } catch (const bad_alloc& e) {
+        // We get std::bad_alloc generally if we try to read arbitrary data as an xg index.
+        throw XGFormatError("XG input data not in XG version " + to_string(file_version) + " format (" + e.what() + ")");
+    } catch (const exception& e) {
+        // Other things will get re-thrown with a hint.
+        cerr << "error [xg]: Unexpected error parsing XG data. Is it in version " << file_version << " XG format?" << endl;
+        throw e;
+    }
 
 }
 
@@ -348,6 +411,23 @@ size_t XG::serialize(ostream& out, sdsl::structure_tree_node* s, std::string nam
 
     sdsl::structure_tree_node* child = sdsl::structure_tree::add_child(s, name, sdsl::util::class_name(*this));
     size_t written = 0;
+    
+    // Do the magic number
+    out << "XG";
+    written += 2;
+    
+    // And the version number
+    int32_t version_buffer = htonl(OUTPUT_VERSION);
+    out.write((char*) &version_buffer, sizeof(version_buffer));
+    written += sizeof(version_buffer) / sizeof(char);
+    
+    ////////////////////////////////////////////////////////////////////////
+    // DO NOT CHANGE THIS CODE without creating a new XG version:
+    // 1. Increment OUTPUT_VERSION to a new integer.
+    // 2. Add your new serialization code.
+    // 3. Add a new case for your new version to XG::load()
+    // 4. Up MAX_INPUT_VERSION to allow your new version to be read.
+    ////////////////////////////////////////////////////////////////////////
 
     written += sdsl::write_member(s_iv.size(), out, child, "sequence_length");
     written += sdsl::write_member(i_iv.size(), out, child, "node_count");
@@ -789,6 +869,7 @@ void XG::build(map<id_t, string>& node_label,
         // If we're a sorted DAG we'll batch up the paths and use a batch
         // insert.
         vector<thread_t> batch;
+        vector<string> batch_names;
     
         // Just store all the paths that are all perfect mappings as threads.
         // We end up converting *back* into thread_t objects.
@@ -807,11 +888,12 @@ void XG::build(map<id_t, string>& node_label,
             if(is_sorted_dag) {
                 // Save for a batch insert
                 batch.push_back(reconstructed);
+                batch_names.push_back(pathpair.first);
             }
             // TODO: else case!
 #elif GPBWT_MODE == MODE_DYNAMIC
             // Insert the thread right now
-            insert_thread(reconstructed);
+            insert_thread(reconstructed, pathpair.first);
 #endif
             
         }
@@ -819,7 +901,7 @@ void XG::build(map<id_t, string>& node_label,
 #if GPBWT_MODE == MODE_SDSL
         if(is_sorted_dag) {
             // Do the batch insert
-            insert_threads_into_dag(batch, {});
+            insert_threads_into_dag(batch, batch_names);
         }
         // TODO: else case!
 #endif
@@ -2604,24 +2686,14 @@ XG::thread_t XG::extract_thread(xg::XG::ThreadMapping node, int64_t offset = 0, 
 
 void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>& names) {
 
-    // build the names
-    string names_str;
+    // Store the names
     for (auto& name : names) {
         names_str.append("$" + name);
     }
-    names_str.append("$"); // tail marker to avoid edge case
-    construct_im(tn_csa, names_str, 1);
-    // build the bv
-    bit_vector tn_bv(names_str.size());
-    int i = 0;
-    for (auto c : names_str) {
-        if (c == '$') tn_bv[i] = 1;
-        ++i;
-    }
-    // make a compressed version and its supports
-    util::assign(tn_cbv, sd_vector<>(tn_bv));
-    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
-    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+#ifdef VERBOSE_DEBUG
+    cerr << "Compressing thread names..." << endl;
+#endif
+    tn_bake();
 
     // store the sides in order of their addition to the threads
     int_vector<> sides_ordered_by_thread_id(t.size()*2); // fwd and reverse
@@ -2872,7 +2944,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
     cerr << "Creating final compressed array..." << endl;
 #endif
     bs_bake();
-
+    
     // compress the starts for the threads
     util::assign(tin_civ, int_vector<>(tin_iv));
     util::assign(tio_civ, int_vector<>(tio_iv));
@@ -2881,7 +2953,7 @@ void XG::insert_threads_into_dag(const vector<thread_t>& t, const vector<string>
     construct_im(side_thread_wt, sides_ordered_by_thread_id);
 }
 
-void XG::insert_thread(const thread_t& t) {
+void XG::insert_thread(const thread_t& t, const string& name) {
     // We're going to insert this thread
     
     auto insert_thread_forward = [&](const thread_t& thread) {
@@ -3068,8 +3140,8 @@ void XG::insert_thread(const thread_t& t) {
     // Insert reverse
     insert_thread_forward(simple_reverse(t));
     
-    // TODO: name annotation
-    
+    // Save the name
+    names_str.append("$" + name);
 }
 
 auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> map<string, list<thread_t>> {
@@ -3149,16 +3221,19 @@ auto XG::extract_threads_matching(const string& pattern, bool reverse) const -> 
 
 auto XG::extract_threads(bool extract_reverse) const -> map<string, list<thread_t>> {
 
-    // Fill in a lsut of paths found
+    // Fill in a map of lists of paths found by name
     map<string, list<thread_t> > found;
 
 #ifdef VERBOSE_DEBUG
     cerr << "Extracting threads" << endl;
 #endif
+    // We consider "reverse" threads to be those that start on the higher-
+    // numbered sides of their nodes.
+    // We know sides 0 and 1 are unused, so the smallest side is 2.
     int64_t begin = !extract_reverse ? 2 : 3;
-    int64_t end = !extract_reverse ? ts_iv.size() : ts_iv.size()-1;
+    int64_t end = !extract_reverse ? ts_iv.size()-1 : ts_iv.size();
     for(int64_t i = begin; i < end; i+=2) {
-        // For each real side
+        // For every other real side
     
 #ifdef VERBOSE_DEBUG
         cerr << ts_iv[i] << " threads start at side " << i << endl;
@@ -3409,6 +3484,25 @@ void XG::bs_bake() {
     bs_arrays.clear();
 #endif
 }
+
+void XG::tn_bake() {
+    names_str.append("$"); // tail marker to avoid edge case
+    construct_im(tn_csa, names_str, 1);
+    // build the bv
+    bit_vector tn_bv(names_str.size());
+    int i = 0;
+    for (auto c : names_str) {
+        if (c == '$') tn_bv[i] = 1;
+        ++i;
+    }
+    names_str.clear();
+    
+    // make a compressed version and its supports
+    util::assign(tn_cbv, sd_vector<>(tn_bv));
+    util::assign(tn_cbv_rank, sd_vector<>::rank_1_type(&tn_cbv));
+    util::assign(tn_cbv_select, sd_vector<>::select_1_type(&tn_cbv));
+}
+
 
 void XG::bs_dump(ostream& out) const {
 #if GPBWT_MODE == MODE_SDSL
