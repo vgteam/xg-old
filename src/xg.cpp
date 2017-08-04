@@ -3,8 +3,8 @@
 
 #include <bitset>
 
-#define debug
-#define VERBOSE_DEBUG
+//#define VERBOSE_DEBUG
+//#define debug_algorithms
 
 namespace xg {
 
@@ -2041,6 +2041,9 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
                                                   int64_t id2, size_t offset2, bool rev2,
                                                   size_t max_search_dist) const {
     
+#ifdef debug_algorithms
+    cerr << "[XG] estimating oriented distance between " << id1 << "[" << offset1 << "]" << (rev1 ? "-" : "+") << " and " << id2 << "[" << offset2 << "]" << (rev2 ? "-" : "+") << " with max search distance of " << max_search_dist << endl;
+#endif
     // maps of oriented paths to (node id, strand, oriented distance) tuples
     map<pair<size_t, bool>, tuple<int64_t, bool, int64_t>> path_dists_1;
     map<pair<size_t, bool>, tuple<int64_t, bool, int64_t>> path_dists_2;
@@ -2095,6 +2098,10 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
             tuple<int64_t, int64_t, bool, bool> trav = curr_queue->top();
             curr_queue->pop();
             
+#ifdef debug_algorithms
+            cerr << "[XG] traversing " << get<1>(trav) << (get<2>(trav) ? "-" : "+") << " in " << (get<3>(trav) ? "backwards" : "forward") << " direction at distance " << get<0>(trav) << endl;
+#endif
+            
             // don't look any further if the next closest traversal is beyond the maximum distance
             if ( get<0>(trav) > (int64_t) max_search_dist) {
                 break;
@@ -2105,6 +2112,9 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
             if ((get<1>(trav) != id1 || get<2>(trav) != rev1) && (get<1>(trav) != id2 || get<2>(trav) != rev2)) {
                 // this is not one of the start positions, so it might have new paths on it
                 for (const pair<size_t, bool>& path_orientation : paths_of_node_traversal(get<1>(trav), get<2>(trav))) {
+#ifdef debug_algorithms
+                    cerr << "\ttraversal is on path " << path_orientation.first << " in " << (path_orientation.second ? "reverse" : "forward") << " orientation" << endl;
+#endif
                     if (!curr_path_dists->count(path_orientation)) {
                         // record the oriented distance to the forward beginning of the node, relative to the start traversal
                         (*curr_path_dists)[path_orientation] = make_tuple(get<1>(trav), get<2>(trav),
@@ -2140,9 +2150,16 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
         }
     }
     
+#ifdef debug_algorithms
+    cerr << "[XG] found a shared path or exhausted search distance" << endl;
+#endif
+    
     // we will look for minimum absolute distance, so set it to the max to begin
     int64_t approx_dist = std::numeric_limits<int64_t>::max();
     for (const pair<size_t, bool>& oriented_path : shared_paths) {
+#ifdef debug_algorithms
+        cerr << "[XG] estimating distance with shared path " << oriented_path.first << (oriented_path.second ? "-" : "+") << endl;
+#endif
         XGPath& path = *paths[oriented_path.first - 1];
         auto& node_trav_1 = path_dists_1[oriented_path];
         auto& node_trav_2 = path_dists_2[oriented_path];
@@ -2172,14 +2189,19 @@ int64_t XG::closest_shared_path_oriented_distance(int64_t id1, size_t offset1, b
                     // n.b. if the node traversals occur on the reverse strand of the path, the traversal
                     // distances represent searches to the opposite sides of the node, so the interval
                     // is offset by one node
+#ifdef debug_algorithms
+                    cerr << "[XG] found consistently ordered traversals at ranks " << node_ranks_1[i] << " and " << node_ranks_2[j] << endl;
+#endif
                     int64_t interval_dist = relative_offset;
                     if (oriented_path.second) {
-                        interval_dist += path.positions[node_ranks_1[i] + 1] - path.positions[node_ranks_2[j] + 1];
+                        interval_dist += (path.positions[node_ranks_1[i]] + node_length(get<0>(node_trav_1))) - (path.positions[node_ranks_2[j]] + node_length(get<0>(node_trav_2)));
                     }
                     else {
                         interval_dist += path.positions[node_ranks_2[j]] - path.positions[node_ranks_1[i]];
                     }
-                    
+#ifdef debug_algorithms
+                    cerr << "[XG] estimating distance on path " << oriented_path.first << (oriented_path.second ? "-" : "+") << " at " << interval_dist << endl;
+#endif
                     // find the minimum absolute distance, but retain signing
                     if (abs(interval_dist) < abs(approx_dist)) {
                         approx_dist = interval_dist;
