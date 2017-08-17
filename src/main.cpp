@@ -3,7 +3,7 @@
 #include <getopt.h>
 #include "sdsl/bit_vectors.hpp"
 #include "stream.hpp"
-#include "cpp/vg.pb.h"
+#include "vg.pb.h"
 #include "xg.hpp"
 
 using namespace std;
