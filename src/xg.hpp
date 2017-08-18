@@ -63,12 +63,12 @@ class XGFormatError : public runtime_error {
 class XG {
 public:
     
-    XG(void) : start_marker('#'),
-               end_marker('$'),
-               seq_length(0),
+    XG(void) : seq_length(0),
                node_count(0),
                edge_count(0),
-               path_count(0) { }
+               path_count(0),
+               start_marker('#'),
+               end_marker('$') { }
     ~XG(void);
     
     // Construct an XG index by loading from a stream. Throw an XGFormatError if
