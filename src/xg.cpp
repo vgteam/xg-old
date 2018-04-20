@@ -2450,7 +2450,7 @@ int XG::min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
     int min_dist = std::numeric_limits<int>::max();
     for (auto& c : dist) {
         for (auto& o : c.second) {
-            if (abs((long int)o) < abs(min_dist)) {
+            if (abs(static_cast<std::intmax_t>(o)) < abs(min_dist)) {
                 min_dist = o;
             }
         }
