@@ -30,8 +30,12 @@ PKG_CHECK_MODULES([DIVSUFSORT64], [libdivsufsort64 >= 2.0.1], [],
              [AC_MSG_ERROR([Unable to find libdivsufsort64])])
 AC_CHECK_LIB([divsufsort], [divsufsort])
 AC_CHECK_LIB([divsufsort64], [divsufsort])
-PKG_CHECK_MODULES([LIBSPARSEHASH], [libsparsehash >= 2.0.2], [],
+PKG_CHECK_MODULES([SPARSEHASH], [libsparsehash >= 2.0.2], [],
                   [AC_MSG_ERROR([Unable to find gcsa2 headers or library])])
+PKG_CHECK_MODULES([HTSLIB], [htslib >= 1.4], [],
+                  [AC_MSG_ERROR([Unable to find htslib headers or library])])
+PKG_CHECK_MODULES([JANSSON], [jansson >= 2.7], [],
+                  [AC_MSG_ERROR([Unable to find jansson headers or library])])
 
 # Checks for header files.
 
