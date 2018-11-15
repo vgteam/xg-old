@@ -1,6 +1,15 @@
 [submodule "bash-tap"]
 	path = bash-tap
 	url = https://github.com/illusori/bash-tap.git
-[submodule "stream"]
-	path = stream
-	url = https://github.com/vgteam/stream.git
+[submodule "vg"]
+	path = vg
+	url = https://github.com/vgteam/vg.git
+[submodule "sparsepp"]
+	path = sparsepp
+	url = https://github.com/greg7mdp/sparsepp.git
+[submodule "sha1"]
+	path = sha1
+	url = https://github.com/vog/sha1.git
+[submodule "htslib"]
+	path = htslib
+	url = https://github.com/samtools/htslib.git

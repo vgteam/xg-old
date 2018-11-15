@@ -1,21 +1,25 @@
-#ifndef SUCCINCT_GRAPH_SG_HPP
-#define SUCCINCT_GRAPH_SG_HPP
+#ifndef VG_XG_HPP_INCLUDED
+#define VG_XG_HPP_INCLUDED
 
 #include <iostream>
 #include <fstream>
 #include <map>
 #include <queue>
 #include <omp.h>
+#include <unordered_map>
+#include <unordered_set>
 #include "vg.pb.h"
 #include "sdsl/bit_vectors.hpp"
 #include "sdsl/enc_vector.hpp"
 #include "sdsl/dac_vector.hpp"
 #include "sdsl/vlc_vector.hpp"
 #include "sdsl/wavelet_trees.hpp"
-//#include "sdsl/csa_bitcompressed.hpp"
 #include "sdsl/csa_wt.hpp"
 #include "sdsl/suffix_arrays.hpp"
-#include "hash_map_set.hpp"
+#include "position.hpp"
+#include "graph.hpp"
+#include "path.hpp"
+#include "handle.hpp"
 
 // We can have DYNAMIC or SDSL-based gPBWTs
 #define MODE_DYNAMIC 1
@@ -60,15 +64,14 @@ class XGFormatError : public runtime_error {
  * Provides succinct storage for a graph, its positional paths, and a set of
  * embedded threads.
  */
-class XG {
+class XG : public PathHandleGraph {
 public:
     
-    XG(void) : seq_length(0),
-               node_count(0),
-               edge_count(0),
-               path_count(0),
-               start_marker('#'),
-               end_marker('$') { }
+    ////////////////////////////////////////////////////////////////////////////
+    // Here are the ways we can construct XG objects (from graph data or files)
+    ////////////////////////////////////////////////////////////////////////////
+    
+    XG(void) = default;
     ~XG(void);
     
     // Construct an XG index by loading from a stream. Throw an XGFormatError if
@@ -97,20 +100,24 @@ public:
     // is faster.
     void from_callback(function<void(function<void(Graph&)>)> get_chunks,
         bool validate_graph = false, bool print_graph = false,
-        bool store_threads = false, bool is_sorted_dag = false); 
-    void build(map<id_t, string>& node_label,
-               map<side_t, set<side_t> >& from_to,
-               map<side_t, set<side_t> >& to_from,
+        bool store_threads = false, bool is_sorted_dag = false);
+        
+    /// Actually build the graph
+    /// Note that path_nodes is a map to make the output deterministic in path order.
+    void build(vector<pair<id_t, string> >& node_label,
+               unordered_map<side_t, vector<side_t> >& from_to,
+               unordered_map<side_t, vector<side_t> >& to_from,
                map<string, vector<trav_t> >& path_nodes,
+               unordered_set<string>& circular_paths,
                bool validate_graph,
                bool print_graph,
                bool store_threads,
                bool is_sorted_dag);
                
     // What's the maximum XG version number we can read with this code?
-    const static uint32_t MAX_INPUT_VERSION = 1;
+    const static uint32_t MAX_INPUT_VERSION = 10;
     // What's the version we serialize?
-    const static uint32_t OUTPUT_VERSION = 1;
+    const static uint32_t OUTPUT_VERSION = 10;
                
     // Load this XG index from a stream. Throw an XGFormatError if the stream
     // does not produce a valid XG file.
@@ -119,32 +126,24 @@ public:
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "");
                      
-                     
-    size_t seq_length;
-    size_t node_count;
-    size_t edge_count;
-    size_t path_count;
     
-    // We need the w function, which we call the "where_to" function. It tells
-    // you, from a given visit at a given side, what visit offset if you go to
-    // another side.
-    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
+    ////////////////////////////////////////////////////////////////////////////
+    // Basic API
+    ////////////////////////////////////////////////////////////////////////////
     
-    // This is another version of the where_to function which requires that you
-    // supply two vectors of edges.
-    // edges_into_new -> edges going into new_side
-    // edges_out_of_old -> edges coming out of current_side
-    // this is to save the overhead of re-extracting these edge-vectors in cases
-    // where you're calling where_to between the same two sides (but with 
-    // different offsets) many times. Otherwise use version above
-    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side,
-      vector<Edge>& edges_into_new, vector<Edge>& edges_out_of_old) const;
-
+    // General public statisitcs
+    size_t seq_length = 0;
+    size_t node_count = 0;
+    size_t edge_count = 0;
+    size_t path_count = 0;
+    
     const uint64_t* sequence_data(void) const;
     const size_t sequence_bit_size(void) const;
     size_t id_to_rank(int64_t id) const;
     int64_t rank_to_id(size_t rank) const;
     size_t max_node_rank(void) const;
+    bool has_node(int64_t id) const;
+    /// Get the node ID at the given sequence position. Works in 1-based coordinates.
     int64_t node_at_seq_pos(size_t pos) const;
     size_t node_start(int64_t id) const;
     Node node(int64_t id) const; // gets node sequence
@@ -152,93 +151,131 @@ public:
     size_t node_length(int64_t id) const;
     char pos_char(int64_t id, bool is_rev, size_t off) const; // character at position
     string pos_substr(int64_t id, bool is_rev, size_t off, size_t len = 0) const; // substring in range
-    Edge edge_for_entity(size_t rank) const;
+    // these provide a way to get an index for each node and edge in the g_iv structure and are used by gPBWT
+    size_t node_graph_idx(int64_t id) const;
+    size_t edge_graph_idx(const Edge& edge) const;
+
+    int64_t get_min_id() const { return min_id; }
+    int64_t get_max_id() const { return max_id; }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is the old low-level API that needs to be restated in terms of the 
+    // locally traversable graph API and then removed.
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Returns true if the given edge is present in the given orientation, and false otherwise.
+    bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
+    /// Returns true if the given edge is present in either orientation, and false otherwise.
+    bool has_edge(const Edge& edge) const;
+    
     vector<Edge> edges_of(int64_t id) const;
     vector<Edge> edges_to(int64_t id) const;
     vector<Edge> edges_from(int64_t id) const;
     vector<Edge> edges_on_start(int64_t id) const;
     vector<Edge> edges_on_end(int64_t id) const;
-    size_t node_rank_as_entity(int64_t id) const;
+    int indegree(int64_t id) const;
+    int outdegree(int64_t id) const;
+    
     /// Get the rank of the edge, or numeric_limits<size_t>.max() if no such edge exists.
-    /// Edge must be specified in canonical orientation.
-    size_t edge_rank_as_entity(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
-    /// Supports the edge articulated in any orientation.
-    size_t edge_rank_as_entity(const Edge& edge) const;
     // Given an edge which is in the graph in some orientation, return the edge
     // oriented as it actually appears.
     Edge canonicalize(const Edge& edge) const;
-    bool entity_is_node(size_t rank) const;
-    size_t entity_rank_as_node_rank(size_t rank) const;
-    /// Returns true if the given edge is present in the given orientation, and false otherwise.
-    bool has_edge(int64_t id1, bool is_start, int64_t id2, bool is_end) const;
-    /// Returns true if the given edge is present in either orientation, and false otherwise.
-    bool has_edge(const Edge& edge) const;
-
-    // Pull out the path with the given name.
-    Path path(const string& name) const;
-    // Returns the rank of the path with the given name, or 0 if no such path
-    // exists.
-    size_t path_rank(const string& name) const;
-    // Returns the maxiumum rank of any existing path. A path does exist at this
-    // rank.
-    size_t max_path_rank(void) const;
-    // Get the name of the path at the given rank. Ranks begin at 1.
-    string path_name(size_t rank) const;
-    vector<size_t> paths_of_entity(size_t rank) const;
-    vector<size_t> paths_of_node(int64_t id) const;
-    vector<size_t> paths_of_edge(int64_t id1, bool from_start, int64_t id2, bool to_end) const;
-    map<string, vector<Mapping>> node_mappings(int64_t id) const;
-    bool path_contains_node(const string& name, int64_t id) const;
-    bool path_contains_edge(const string& name,
-                            int64_t id1, bool from_start,
-                            int64_t id2, bool to_end) const;
-    bool path_contains_entity(const string& name, size_t rank) const;
-    void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
-    size_t node_occs_in_path(int64_t id, const string& name) const;
-    size_t node_occs_in_path(int64_t id, size_t rank) const;
-    vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
-    vector<size_t> node_ranks_in_path(int64_t id, size_t rank) const;
-    vector<size_t> position_in_path(int64_t id, const string& name) const;
-    vector<size_t> position_in_path(int64_t id, size_t rank) const;
-    map<string, vector<size_t> > position_in_paths(int64_t id, bool is_rev = false, size_t offset = 0) const;
-    map<string, vector<size_t> > distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
-                                                   int64_t id2, bool is_rev2, size_t offset2) const;
-
-    int min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
-                              int64_t id2, bool is_rev2, size_t offset2) const;
-    int64_t node_at_path_position(const string& name, size_t pos) const;
-    Mapping mapping_at_path_position(const string& name, size_t pos) const;
-    size_t node_start_at_path_position(const string& name, size_t pos) const;    
-    size_t path_length(const string& name) const;
-    size_t path_length(size_t rank) const;
-    // if node is on path, return it.  otherwise, return next node (in id space)
-    // that is on path.  if none exists, return 0
-    int64_t next_path_node_by_id(size_t path_rank, int64_t id) const;
-    // nearest node (in steps) that is in a path, and the paths
-    pair<int64_t, vector<size_t> > nearest_path_node(int64_t id, int max_steps = 16) const;
-    // if node is on path, return it.  otherwise, return previous node (in id space)
-    // that is on path.  if none exists, return 0
-    int64_t prev_path_node_by_id(size_t path_rank, int64_t id) const;
-    // estimate distance (in bp) between two nodes along a path.
-    // if a nodes isn't on the path, the nearest node on the path (using id space)
-    // is used as a proxy.  
-    int64_t approx_path_distance(const string& name, int64_t id1, int64_t id2) const;
-    // like above, but find minumum over list of paths.  if names is empty, do all paths
-    int64_t min_approx_path_distance(const vector<string>& names, int64_t id1, int64_t id2) const;
     
-    // returns all of the paths that a node traversal occurs on and in which orientation. false
-    // indicates that the traversal occurs in the same orientation as in the path, true indicates
-    // reverse (both may be included for the same traversal)
-    vector<pair<size_t, bool>> paths_of_node_traversal(int64_t id, bool is_rev) const;
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is the new locally traversable graph storage API
+    ////////////////////////////////////////////////////////////////////////////
     
-    // the oriented distance (positive if pos2 is further along the path than pos1, otherwise negative)
-    // estimated by the distance along the nearest shared path to the two positions plus the distance
-    // to traverse to that path. returns numeric_limits<int64_t>::max() if no pair of nodes that occur same
-    // on the strand of a path are reachable within the max search distance (measured in sequence length,
-    // not node length).
-    int64_t closest_shared_path_oriented_distance(int64_t id1, size_t offset1, bool rev1,
-                                                  int64_t id2, size_t offset2, bool rev2,
-                                                  size_t max_search_dist = 100) const;
+    /// use the unified graph storage to return a node subgraph
+    Graph node_subgraph_id(int64_t id) const;
+    Graph node_subgraph_g(int64_t g) const;
+    
+    /// provide the graph context up to a given length from the current position; step by nodes
+    Graph graph_context_id(const pos_t& pos, int64_t length) const;
+    Graph graph_context_g(const pos_t& pos, int64_t length) const;
+    
+    /// return an edge from the three-part encoding used in the graph vector
+    /// Edge type encoding:
+    /// 1: end to start
+    /// 2: end to end
+    /// 3: start to start
+    /// 4: start to end
+    Edge edge_from_encoding(int64_t from, int64_t to, int type) const;
+    void idify_graph(Graph& graph) const;
+    
+    /// a numerical code for the edge type (based on the two reversal flags)
+    int edge_type(bool from_start, bool to_end) const;
+    int edge_type(const Edge& edge) const;
+    
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is the handle graph API
+    ////////////////////////////////////////////////////////////////////////////
+    
+    /// Look up the handle for the node with the given ID in the given orientation
+    virtual handle_t get_handle(const id_t& node_id, bool is_reverse) const;
+    // Copy over the visit version which would otherwise be shadowed.
+    using HandleGraph::get_handle;
+    /// Get the ID from a handle
+    virtual id_t get_id(const handle_t& handle) const;
+    /// Get the orientation of a handle
+    virtual bool get_is_reverse(const handle_t& handle) const;
+    /// Invert the orientation of a handle (potentially without getting its ID)
+    virtual handle_t flip(const handle_t& handle) const;
+    /// Get the length of a node
+    virtual size_t get_length(const handle_t& handle) const;
+    /// Get the sequence of a node, presented in the handle's local forward
+    /// orientation.
+    virtual string get_sequence(const handle_t& handle) const;
+    /// Loop over all the handles to next/previous (right/left) nodes. Passes
+    /// them to a callback which returns false to stop iterating and true to
+    /// continue.
+    virtual bool follow_edges(const handle_t& handle, bool go_left, const function<bool(const handle_t&)>& iteratee) const;
+    /// Loop over all the nodes in the graph in their local forward
+    /// orientations, in their internal stored order. Stop if the iteratee returns false.
+    virtual void for_each_handle(const function<bool(const handle_t&)>& iteratee, bool parallel = false) const;
+    // Copy over the tamplate version
+    using HandleGraph::for_each_handle;
+    /// Return the number of nodes in the graph
+    virtual size_t node_size() const;
+    
+    ////////////////////////
+    // Path handle graph API
+    ////////////////////////
+    
+    /// Look up the path handle for the given path name
+    virtual path_handle_t get_path_handle(const string& path_name) const;
+    /// Look up the name of a path from a handle to it
+    virtual string get_path_name(const path_handle_t& path_handle) const;
+    /// Returns the number of node occurrences in the path
+    virtual size_t get_occurrence_count(const path_handle_t& path_handle) const;
+    /// Returns the total length of sequence in the path
+    virtual size_t get_path_length(const path_handle_t& path_handle) const;
+    /// Returns the number of paths stored in the graph
+    virtual size_t get_path_count() const;
+    /// Execute a function on each path in the graph
+    virtual void for_each_path_handle(const function<void(const path_handle_t&)>& iteratee) const;
+    /// Get a node handle (node ID and orientation) from a handle to an occurrence on a path
+    virtual handle_t get_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Get a handle to the first occurrence in a path
+    virtual occurrence_handle_t get_first_occurrence(const path_handle_t& path_handle) const;
+    /// Get a handle to the last occurrence in a path
+    virtual occurrence_handle_t get_last_occurrence(const path_handle_t& path_handle) const;
+    /// Returns true if the occurrence is not the last occurence on the path, else false
+    virtual bool has_next_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Returns true if the occurrence is not the first occurence on the path, else false
+    virtual bool has_previous_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Returns a handle to the next occurrence on the path
+    virtual occurrence_handle_t get_next_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Returns a handle to the previous occurrence on the path
+    virtual occurrence_handle_t get_previous_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Returns a handle to the path that an occurrence is on
+    virtual path_handle_t get_path_handle_of_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    /// Returns the 0-based ordinal rank of a occurrence on a pth
+    virtual size_t get_ordinal_rank_of_occurrence(const occurrence_handle_t& occurrence_handle) const;
+    
+    
+    ////////////////////////////////////////////////////////////////////////////
+    // Higher-level graph API
+    ////////////////////////////////////////////////////////////////////////////
     
     // use_steps flag toggles whether dist refers to steps or length in base pairs
     void neighborhood(int64_t id, size_t dist, Graph& g, bool use_steps = true) const;
@@ -267,7 +304,187 @@ public:
     // (or end of graph reached).  if forward is false, go backwards...
     void get_id_range_by_length(int64_t id1, int64_t length, Graph& g, bool forward) const;
     
-    // gPBWT interface
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is the paths API
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// Pull out the path with the given name.
+    Path path(const string& name) const;
+    /// Get the path string
+    string path_string(const Path& path);
+    /// Get the path as an alignment
+    Alignment path_as_alignment(const string& name);
+    /// Convert the Path to an alignment
+    Alignment path_as_alignment(const Path& path);
+    /// Get all the paths as alignments
+    vector<Alignment> paths_as_alignments(void);
+    /// Get the path object by name
+    const XGPath& get_path(const string& name) const;
+    /// Returns the rank of the path with the given name, or 0 if no such path exists.
+    size_t path_rank(const string& name) const;
+    /// Returns the ranks of the paths prefixed by the given string
+    vector<size_t> path_ranks_by_prefix(const string& prefix) const;
+    /// Returns the names of the paths prefixed by the given string
+    vector<string> path_names_by_prefix(const string& prefix) const;
+    /// Returns the paths with the given prefix
+    vector<Path> paths_by_prefix(const string& prefix) const;
+    /// Returns the maxiumum rank of any existing path. A path does exist at this rank.
+    size_t max_path_rank(void) const;
+    /// Get the name of the path at the given rank. Ranks begin at 1.
+    string path_name(size_t rank) const;
+    vector<size_t> paths_of_node(int64_t id) const;
+    map<string, vector<Mapping>> node_mappings(int64_t id) const;
+    bool path_contains_node(const string& name, int64_t id) const;
+    void add_paths_to_graph(map<int64_t, Node*>& nodes, Graph& g) const;
+    size_t node_occs_in_path(int64_t id, const string& name) const;
+    size_t node_occs_in_path(int64_t id, size_t rank) const;
+    vector<size_t> node_ranks_in_path(int64_t id, const string& name) const;
+    vector<size_t> node_ranks_in_path(int64_t id, size_t rank) const;
+    /// Get the positions (but not the orientations) of the given node on the given path.
+    // See also: oriented_occurrences_on_path, which gives rank and orientation
+    vector<size_t> position_in_path(int64_t id, const string& name) const;
+    vector<size_t> position_in_path(int64_t id, size_t rank) const;
+    map<string, vector<size_t> > position_in_paths(int64_t id, bool is_rev = false, size_t offset = 0) const;
+    map<string, vector<pair<size_t, bool> > > offsets_in_paths(pos_t pos) const;
+    map<string, vector<pair<size_t, bool> > > nearest_offsets_in_paths(pos_t pos, int64_t max_search) const;
+    map<string, vector<size_t> > distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                                                   int64_t id2, bool is_rev2, size_t offset2) const;
+    int64_t min_distance_in_paths(int64_t id1, bool is_rev1, size_t offset1,
+                                  int64_t id2, bool is_rev2, size_t offset2) const;
+    /// Get the ID of the node that covers the given 0-based position along the path.
+    int64_t node_at_path_position(const string& name, size_t pos) const;
+    /// Get the Mapping that covers the given 0-based position along the path.
+    Mapping mapping_at_path_position(const string& name, size_t pos) const;
+    /// Get the 0-based start position in the path that covers the given 0-based position along the path.
+    size_t node_start_at_path_position(const string& name, size_t pos) const;
+    /// Get the graph position at the given 0-based path position
+    pos_t graph_pos_at_path_position(const string& name, size_t pos) const;
+    /// Make an Alignment corresponding to a subregion of a stored path.
+    /// Positions are 0-based, and pos2 is excluded.
+    /// Respects path circularity, so pos2 < pos1 is not a problem.
+    /// If pos1 == pos2, returns an empty alignment.
+    Alignment target_alignment(const string& name, size_t pos1, size_t pos2, const string& feature, bool is_reverse) const;
+    /// Same as above, but uses the given Mapping, translated directly form a CIGAR string, as a source of edits.
+    /// The edits are inserted into the generated Alignment, cut as necessary to fit into the Alignment's Mappings.
+    Alignment target_alignment(const string& name, size_t pos1, size_t pos2, const string& feature, bool is_reverse, Mapping& cigar_mapping) const;
+    size_t path_length(const string& name) const;
+    size_t path_length(size_t rank) const;
+    /// Return true if the path with the given name is circular, and false if it is not. The path must exist.
+    bool path_is_circular(const string& name) const;
+    /// Return true if the path with the given rank is circular, and false if it is not. The path must exist.
+    bool path_is_circular(size_t rank) const;
+    // nearest node (in steps) that is in a path, and the paths
+    pair<int64_t, vector<size_t> > nearest_path_node(int64_t id, int max_steps = 16) const;
+    int64_t min_approx_path_distance(int64_t id1, int64_t id2) const;
+    /// nearest position that is in a path and the distance between it and the current position
+    pair<pos_t, int64_t> next_path_position(pos_t pos, int64_t max_search) const;
+    
+    /// returns true if the paths are on the same connected component of the graph (constant time)
+    bool paths_on_same_component(size_t path_rank_1, size_t path_rank_2) const;
+    
+    /// returns the ranks (NOT base positions) and orientations of a given node on a path
+    vector<pair<size_t, bool>> oriented_occurrences_on_path(int64_t id, size_t path) const;
+    
+    /// returns the ranks (NOT base positions) and orientations of a given node on a set of paths
+    vector<pair<size_t, vector<pair<size_t, bool>>>> oriented_occurrences_on_paths(int64_t id, vector<size_t>& paths) const;
+    
+    /// returns all of the paths that a node traversal occurs on, the rank of these occurrences on the path
+    /// and the orientation of the occurrences. false indicates that the traversal occurs in the same
+    /// orientation as in the path, true indicates.
+    vector<pair<size_t, vector<pair<size_t, bool>>>> oriented_paths_of_node(int64_t id) const;
+    
+    /// same as paths_of_node, but with an optional memo to avoid repeated recalculation
+    vector<size_t> memoized_paths_of_node(int64_t id, unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr) const;
+    
+    /// same as oriented_occurrences_on_path, but with an optional memo to avoid repeated recalculation
+    vector<pair<size_t, bool>> memoized_oriented_occurrences_on_path(int64_t id, size_t path,
+                                                                     unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr) const;
+    
+    /// same as oriented_paths_of_node, but with an optional memo to avoid repeated recalculation
+    vector<pair<size_t, vector<pair<size_t, bool>>>> memoized_oriented_paths_of_node(int64_t id,
+                                                                                     unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr,
+                                                                                     unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr) const;
+    
+    /// returns a the memoized result from get_handle if a memo is provided that the result has been queried previously
+    /// otherwise, returns the result of get_handle directly and stores it in the memo if one is provided
+    handle_t memoized_get_handle(int64_t id, bool rev, unordered_map<pair<int64_t, bool>, handle_t>* handle_memo = nullptr) const;
+    
+    /// the oriented distance (positive if pos2 is further along the path than pos1, otherwise negative)
+    /// estimated by the distance along the nearest shared path to the two positions. returns numeric_limits<int64_t>::max()
+    // if no pair of nodes that occur same path are reachable within the max search distance (measured in sequence length,
+    /// not node length).
+    int64_t closest_shared_path_unstranded_distance(int64_t id1, size_t offset1, bool rev1,
+                                                    int64_t id2, size_t offset2, bool rev2,
+                                                    size_t max_search_dist,
+                                                    unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr,
+                                                    unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr,
+                                                    unordered_map<pair<int64_t, bool>, handle_t>* handle_memo = nullptr) const;
+    
+    /// the oriented distance (positive if pos2 is further along the path than pos1, otherwise negative)
+    /// estimated by the distance along the nearest shared path to the two positions plus the distance
+    /// to traverse to that path. returns numeric_limits<int64_t>::max() if no pair of nodes that occur same
+    /// on the strand of a path are reachable within the max search distance (measured in sequence length,
+    /// not node length). optionally returns the distance along the forward strand
+    int64_t closest_shared_path_oriented_distance(int64_t id1, size_t offset1, bool rev1,
+                                                  int64_t id2, size_t offset2, bool rev2,
+                                                  bool forward_strand = false,
+                                                  size_t max_search_dist = 100,
+                                                  unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr,
+                                                  unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr,
+                                                  unordered_map<pair<int64_t, bool>, handle_t>* handle_memo = nullptr) const;
+    
+    /// returns a vector of (node id, is reverse, offset) tuples that are found by jumping a fixed oriented distance
+    /// along path(s) from the given position. if the position is not on a path, searches from the position to a path
+    /// and adds/subtracts the search distance to the jump depending on the search direction. returns an empty vector
+    /// if there is no path within the max search distance or if the jump distance goes past the end of the path
+    vector<tuple<int64_t, bool, size_t>> jump_along_closest_path(int64_t id, bool is_rev, size_t offset, int64_t jump_dist, size_t max_search_dist,
+                                                                 unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr,
+                                                                 unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr,
+                                                                 unordered_map<pair<int64_t, bool>, handle_t>* handle_memo = nullptr) const;
+    
+    /// checks whether two positions are on or near the same strand of some path. if the position can reach both strands of a
+    /// path, it is only considered to be on the nearer of the two strands. positions are also considered consistent if they
+    /// can traverse to each other within the maximum search distance. returns a pair of orientations that are the same and
+    /// equal to the orientation on the strand if they are consistent, and different if they are inconsistent
+    pair<bool, bool> validate_strand_consistency(int64_t id1, size_t offset1, bool rev1,
+                                                 int64_t id2, size_t offset2, bool rev2,
+                                                 size_t max_search_dist,
+                                                 unordered_map<int64_t, vector<size_t>>* paths_of_node_memo = nullptr,
+                                                 unordered_map<pair<int64_t, size_t>, vector<pair<size_t, bool>>>* oriented_occurrences_memo = nullptr,
+                                                 unordered_map<pair<int64_t, bool>, handle_t>* handle_memo = nullptr) const;
+    ////////////////////////////////////////////////////////////////////////////
+    // Sample database API
+    ////////////////////////////////////////////////////////////////////////////
+    
+    // Can be used either with the gPBWT or an external index of threads.
+    
+    /// Replace the existing thread names (if any) with the new names. Each name
+    /// must be unique. Each name corresponds to a pair of embedded oriented
+    /// threads, which comprise a single thread.
+    void set_thread_names(const vector<string>& names);
+    
+    /// Given a thread id, return its name. Thread IDs are all threads as given
+    /// in names in order, and then the reverse versions of all those oriented
+    /// threads in the same order.
+    string thread_name(int64_t thread_id) const;
+    
+    /// Store the number of haplotypes that gave rise to the indexed threads. A
+    /// single haplotype may be represented by multiple threads. If the index
+    /// spans multiple contigs, threads from the same VCF phase on different
+    /// contigs from the same sample will be considered to be part of the same
+    /// haplotype for counting purposes.
+    void set_haplotype_count(size_t count);
+    
+    /// Get the number of haplotypes that gave rise to threads stored in the
+    /// thread index. TODO: needs to account for graph component or contig, as
+    /// different components may have different numbers of haplotypes on them.
+    size_t get_haplotype_count() const;
+    
+    
+    
+    ////////////////////////////////////////////////////////////////////////////
+    // gPBWT API
+    ////////////////////////////////////////////////////////////////////////////
     
 #if GPBWT_MODE == MODE_SDSL
     // We keep our strings in instances of this cool run-length-compressed wavelet tree.
@@ -275,8 +492,24 @@ public:
 #elif GPBWT_MODE == MODE_DYNAMIC
     using rank_select_int_vector = dyn::rle_str;
 #endif
+
+    // We need the w function, which we call the "where_to" function. It tells
+    // you, from a given visit at a given side, what visit offset if you go to
+    // another side.
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side) const;
+    
+    // This is another version of the where_to function which requires that you
+    // supply two vectors of edges.
+    // edges_into_new -> edges going into new_side
+    // edges_out_of_old -> edges coming out of current_side
+    // this is to save the overhead of re-extracting these edge-vectors in cases
+    // where you're calling where_to between the same two sides (but with 
+    // different offsets) many times. Otherwise use version above
+    int64_t where_to(int64_t current_side, int64_t visit_offset, int64_t new_side,
+      const vector<Edge>& edges_into_new, const vector<Edge>& edges_out_of_old) const;
     
     // We define a thread visit that's much smaller than a Protobuf Mapping.
+    // Note that the fields are not initialized, so the default-constructed ThreadMapping will be garbage.
     struct ThreadMapping {
         int64_t node_id;
         bool is_reverse;
@@ -293,8 +526,6 @@ public:
     // Path.
     using thread_t = vector<ThreadMapping>;
     
-    // Count matches to a subthread among embedded threads
-
     /// Insert a thread. Name must be unique or empty.
     /// bs_bake() and tn_bake() need to be called before queries.
     void insert_thread(const thread_t& t, const string& name);
@@ -372,9 +603,6 @@ public:
     /// Given a thread id and the reverse state get the starting side and offset
     pair<int64_t, int64_t> thread_start(int64_t thread_id) const;
 
-    /// Given a thread id, return its name
-    string thread_name(int64_t thread_id) const;
-
     /// Gives the thread start for the given thread
     pair<int64_t, int64_t> thread_start(int64_t thread_id, bool is_rev) const;
 
@@ -388,11 +616,71 @@ public:
     // Dump the whole B_s array to the given output stream as a report.
     void bs_dump(ostream& out) const;
     
-    char start_marker;
-    char end_marker;
+    char start_marker = '#';
+    char end_marker = '$';
     
 private:
 
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is the New Way (locally traversable graph storage)
+    // Everything should be rewritten in terms of these members
+    ////////////////////////////////////////////////////////////////////////////
+
+    /// locally traversable graph storage
+    /// 
+    /// Encoding designed for efficient compression, cache locality, and relativistic traversal of the graph.
+    ///
+    /// node := { header, edges_to, edges_from }
+    /// header := { node_id, node_start, node_length, edges_to_count, edges_from_count }
+    /// node_id := integer
+    /// node_start := integer (offset in s_iv)
+    /// node_length := integer
+    /// edges_to_count := integer
+    /// edges_from_count := integer
+    /// edges_to := { edge_to, ... }
+    /// edges_from := { edge_from, ... }
+    /// edge_to := { offset_to_previous_node, edge_type }
+    /// edge_to := { offset_to_next_node, edge_type }
+    int_vector<> g_iv;
+    /// delimit node records to allow lookup of nodes in g_civ by rank
+    bit_vector g_bv;
+    rank_support_v<1> g_bv_rank;
+    bit_vector::select_1_type g_bv_select;
+    
+    // Let's define some offset ints
+    const static int G_NODE_ID_OFFSET = 0;
+    const static int G_NODE_SEQ_START_OFFSET = 1;
+    const static int G_NODE_LENGTH_OFFSET = 2;
+    const static int G_NODE_TO_COUNT_OFFSET = 3;
+    const static int G_NODE_FROM_COUNT_OFFSET = 4;
+    const static int G_NODE_HEADER_LENGTH = 5;
+    
+    const static int G_EDGE_OFFSET_OFFSET = 0;
+    const static int G_EDGE_TYPE_OFFSET = 1;
+    const static int G_EDGE_LENGTH = 2;
+    
+    // And some masks
+    const static size_t HIGH_BIT = (size_t)1 << 63;
+    const static size_t LOW_BITS = 0x7FFFFFFFFFFFFFFF;
+    
+    /// This is a utility function for the edge exploration. It says whether we
+    /// want to visit an edge depending on its type, whether we're the to or
+    /// from node, whether we want to look left or right, and whether we're
+    /// forward or reverse on the node.
+    bool edge_filter(int type, bool is_to, bool want_left, bool is_reverse) const;
+    
+    // This loops over the given number of edge records for the given g node,
+    // starting at the given start g vector position. For all the edges that are
+    // wanted by edge_filter given the is_to, want_left, and is_reverse flags,
+    // the iteratee is called. Returns true if the iteratee never returns false,
+    // or false (and stops iteration) as soon as the iteratee returns false.
+    bool do_edges(const size_t& g, const size_t& start, const size_t& count,
+        bool is_to, bool want_left, bool is_reverse, const function<bool(const handle_t&)>& iteratee) const;
+    
+    ////////////////////////////////////////////////////////////////////////////
+    // Here are the bits we need to keep around to talk about the sequence
+    ////////////////////////////////////////////////////////////////////////////
+    
     // sequence/integer vector
     int_vector<> s_iv;
     // node starts in sequence, provides id schema
@@ -401,48 +689,19 @@ private:
     bit_vector s_bv; // node positions in siv
     rank_support_v<1> s_bv_rank;
     bit_vector::select_1_type s_bv_select;
-    // compressed version
-    rrr_vector<> s_cbv;
-    rrr_vector<>::rank_1_type s_cbv_rank;
-    rrr_vector<>::select_1_type s_cbv_select;
+    
+    ////////////////////////////////////////////////////////////////////////////
+    // And here are the bits for tracking actual node IDs
+    ////////////////////////////////////////////////////////////////////////////
 
     // maintain old ids from input, ranked as in s_iv and s_bv
-    int_vector<> i_iv;
-    int64_t min_id; // id ranges don't have to start at 0
-    int64_t max_id;
+    int64_t min_id = 0; // id ranges don't have to start at 0
+    int64_t max_id = 0;
     int_vector<> r_iv; // ids-id_min is the rank
 
-    // maintain forward links
-    int_vector<> f_iv;
-    bit_vector f_bv;
-    rank_support_v<1> f_bv_rank;
-    bit_vector::select_1_type f_bv_select;
-    bit_vector f_from_start_bv;
-    bit_vector f_to_end_bv;
-    sd_vector<> f_from_start_cbv;
-    sd_vector<> f_to_end_cbv;
-
-    // and the same data in the reverse direction
-    int_vector<> t_iv;
-    bit_vector t_bv;
-    rank_support_v<1> t_bv_rank;
-    bit_vector::select_1_type t_bv_select;
-    // these bit vectors are only used during construction
-    // perhaps they should be moved?
-    bit_vector t_from_start_bv;
-    bit_vector t_to_end_bv;
-    // used at runtime
-    sd_vector<> t_from_start_cbv;
-    sd_vector<> t_to_end_cbv;
-
-    // edge table, allows o(1) determination of edge existence
-    int_vector<> e_iv;
-
-    //csa_wt<> e_csa;
-    //csa_sada<> e_csa;
-
-    // allows lookups of id->rank mapping
-    //wt_int<> i_wt;
+    ////////////////////////////////////////////////////////////////////////////
+    // Here is path storage
+    ////////////////////////////////////////////////////////////////////////////
 
     // paths: serialized as bitvectors over nodes and edges
     int_vector<> pn_iv; // path names
@@ -456,13 +715,37 @@ private:
     // the growth in required memory is quadratic but the stored matrix is sparse
     vector<XGPath*> paths; // path entity membership
 
-    // entity->path membership
-    int_vector<> ep_iv;
-    bit_vector ep_bv; // entity delimiters in ep_iv
-    rank_support_v<1> ep_bv_rank;
-    bit_vector::select_1_type ep_bv_select;
+    // node->path membership
+    int_vector<> np_iv;
+    bit_vector np_bv; // entity delimiters in ep_iv
+    rank_support_v<1> np_bv_rank;
+    bit_vector::select_1_type np_bv_select;
 
-    // Succinct thread storage
+    ////////////////////////////////////////////////////////////////////////////
+    // Thread haplotype/sample database
+    ////////////////////////////////////////////////////////////////////////////
+    
+    // thread name storage
+    // CSA that lets us look up names efficiently, build from ordered null-delimited names
+    // thread ids are taken to be the rank in the source text for tn_csa
+    csa_bitcompressed<> tn_csa;
+    // allows us to go from positions in the CSA to thread ids
+    // rank(i) gives us our thread index for a position in tn_csa's source
+    // select(i) gives us the thread name start for a given thread id
+    sd_vector<> tn_cbv;
+    sd_vector<>::rank_1_type tn_cbv_rank;
+    sd_vector<>::select_1_type tn_cbv_select;
+    
+    // Stores the number of haplotypes per contig that gave rise to the threads in the database
+    size_t haplotype_count = 0;
+    
+    /// Back-calculate haplotype_count from the thread names for upgrading old XGs.
+    void count_haplotypes();
+    
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Succinct thread storage (the gPBWT)
+    ////////////////////////////////////////////////////////////////////////////
     
     // Threads are haplotype paths in the graph with no edits allowed, starting
     // and stopping at node boundaries.
@@ -476,7 +759,7 @@ private:
     // per-side array run separator, respectively.
     
     // This holds, for each node and edge, in each direction (with indexes as in
-    // the entity vector f_iv, *2, and +1 for reverse), the usage count (i.e.
+    // the entity vector g_iv, *2, and +1 for reverse), the usage count (i.e.
     // the number of times it is visited by encoded threads). This doesn't have
     // to be dynamic since the length will never change. Remember that entity
     // ranks are 1-based, so if you have an entity rank you have to subtract 1
@@ -485,15 +768,17 @@ private:
     // directions are the same, while we're inserting a thread in one direction
     // and not (yet) the other, the usage counts in both directions will be
     // different.
-    int_vector<> h_iv;
-    
+    int_vector<> h_iv;  // only used in construction
+    vlc_vector<> h_civ;
+
     // This (as an extension to the algorithm described in the paper) holds the
     // number of threads beginning at each node. This isn't any extra
     // information relative to what's in the usage count array, but it's cheaper
     // (probably) to maintain this rather than to scan through all the edges on
     // a side every time.
     // ts stands for "thread start"
-    int_vector<> ts_iv;
+    int_vector<> ts_iv;  // only used in construction
+    vlc_vector<> ts_civ;
     
 #if GPBWT_MODE == MODE_SDSL
     // We use this for creating the sub-parts of the uncompressed B_s arrays.
@@ -510,16 +795,7 @@ private:
     // isn't used; we just place these by side.
     rank_select_int_vector bs_single_array;
 
-    // thread name storage
-    // CSA that lets us look up names efficiently, build from ordered null-delimited names
-    // thread ids are taken to be the rank in the source text for tn_csa
-    csa_bitcompressed<> tn_csa;
-    // allows us to go from positions in the CSA to thread ids
-    // rank(i) gives us our thread index for a position in tn_csa's source
-    // select(i) gives us the thread name start for a given thread id
-    sd_vector<> tn_cbv;
-    sd_vector<>::rank_1_type tn_cbv_rank;
-    sd_vector<>::select_1_type tn_cbv_select;
+    // Glue to connect thread names and IDs to their locations in the gPBWT
     // allows us to go from thread ids to thread start positions, enabling named queries of the graph
     vlc_vector<> tin_civ; // from thread id to side id / reverse thread id to side id
     vlc_vector<> tio_civ; // from thread id to offset / reverse thread id to offset
@@ -529,7 +805,19 @@ private:
     // Holds the names of threads while they are being inserted, before the
     // succinct name representation is built.
     string names_str;
+    
+    // Memoized sets of the path ranks that co-occur on a connected component
+    vector<unordered_set<size_t>> component_path_sets;
+    // An index from a path rank to the set of path ranks that occur on the same connected component as it
+    vector<size_t> component_path_set_of_path;
 
+    // Fill the component path sets indexes
+    void index_component_path_sets();
+    // Create a representation of the component path set indexes in serializable sdsl types
+    void create_succinct_component_path_sets(int_vector<>& path_ranks_iv_out, bit_vector& path_ranks_bv_out) const;
+    // Convert the serializable sdsl representation of the component path set indexes into the in-memory class members
+    void unpack_succinct_component_path_sets(const int_vector<>& path_ranks_iv, const bit_vector& path_ranks_bv);
+    
     // A "destination" is either a local edge number + 2, BS_NULL for stopping,
     // or possibly BS_SEPARATOR for cramming multiple Benedict arrays into one.
     using destination_t = size_t;
@@ -562,14 +850,15 @@ private:
 
 class XGPath {
 public:
-    XGPath(void) { }
-    ~XGPath(void) { }
+    XGPath(void) = default;
+    ~XGPath(void) = default;
     // Path name is required here only for complaining intelligently when
     // something goes wrong. We can also spit out the total unique members,
     // because in here is the most efficient place to count them.
     XGPath(const string& path_name,
            const vector<trav_t>& path,
-           size_t entity_count,
+           bool is_circular,
+           size_t node_count,
            XG& graph,
            size_t* unique_member_count_out = nullptr);
     // Path names are stored in the XG object, in a compressed fashion, and are
@@ -581,28 +870,33 @@ public:
     XGPath(XGPath&& other) = delete;
     XGPath& operator=(const XGPath& other) = delete;
     XGPath& operator=(XGPath&& other) = delete;
-    
-    rrr_vector<> members;
-    rrr_vector<>::rank_1_type members_rank;
-    rrr_vector<>::select_1_type members_select;
-    wt_int<> ids;
+    int64_t min_node_id = 0;
+    wt_gmr<> ids;
     sd_vector<> directions; // forward or backward through nodes
     int_vector<> positions;
     int_vector<> ranks;
     bit_vector offsets;
     rank_support_v<1> offsets_rank;
     bit_vector::select_1_type offsets_select;
-    void load(istream& in);
+    bool is_circular = false;
+    void load(istream& in, uint32_t file_version, const function<int64_t(size_t)>& rank_to_id);
     size_t serialize(std::ostream& out,
                      sdsl::structure_tree_node* v = NULL,
                      std::string name = "") const;
     // Get a mapping. Note that the mapping will not have its lengths filled in.
-    Mapping mapping(size_t offset) const; // 0-based
+    Mapping mapping(size_t offset, const function<int64_t(id_t)>& node_length) const;
+
+    // Get the node orientation at a 0-based offset.
+    id_t node(size_t offset) const;
+    bool is_reverse(size_t offset) const;
+    id_t local_id(id_t id) const;
+    id_t external_id(id_t id) const;
+    id_t node_at_position(size_t pos) const;
+    size_t offset_at_position(size_t pos) const;
 };
 
 
 Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse);
-void parse_region(const string& target, string& name, int64_t& start, int64_t& end);
 void to_text(ostream& out, Graph& graph);
 
 // Serialize a rank_select_int_vector in an SDSL serialization compatible way. Returns the number of bytes written.
