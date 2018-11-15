@@ -7,3 +7,6 @@
 [submodule "sparsepp"]
 	path = sparsepp
 	url = https://github.com/greg7mdp/sparsepp.git
+[submodule "sha1"]
+	path = sha1
+	url = https://github.com/vog/sha1.git
