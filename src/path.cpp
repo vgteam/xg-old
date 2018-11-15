@@ -1,6 +1,5 @@
 #include "path.hpp"
 #include "stream.hpp"
-#include "region.hpp"
 
 namespace vg {
 

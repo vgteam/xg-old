@@ -16,6 +16,7 @@
 #include "types.hpp"
 #include "position.hpp"
 #include "nodetraversal.hpp"
+#include "region.hpp"
 
 //#define debug
 

@@ -1518,7 +1518,7 @@ void parse_gff_regions(istream& gffstream,
             getline(ss, strand, '\t');
             getline(ss, num, '\t');
             getline(ss, annotations, '\t');
-            vector<string> vals = split(annotations, ";");
+            vector<string> vals = split_delims(annotations, ";");
             for (auto& s : vals) {
                 if (s.find("Name=") == 0) {
                     name = s.substr(5);

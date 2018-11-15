@@ -280,41 +280,6 @@ string get_dir() {
 
 } // namespace temp_file
 
-string get_or_make_variant_id(const vcflib::Variant& variant) {
-
-     if(!variant.id.empty() && variant.id != ".") {
-        // We assume all the actually filled in ID fields in a VCF are unique.
-        return variant.id;
-    } else {
-        // Synthesize a name for the variant
-
-        return make_variant_id(variant);
-
-    }
-}
-
-string make_variant_id(const vcflib::Variant& variant) {
-    // Synthesize a name for the variant
-
-    // Let's just hash
-    SHA1 hasher;
-
-    // Turn the variant into a string, leaving out the actual calls and any
-    // assigned ID. Note that this keeps the modified 0-based position.
-    std::stringstream variant_stringer;
-    variant_stringer << variant.sequenceName << '\n';
-    variant_stringer << variant.position << '\n';
-    variant_stringer << variant.ref << '\n';
-    for (auto& alt : variant.alt) {
-        variant_stringer << alt << '\n';
-    }
-    hasher.update(variant_stringer.str());
-
-    // Name the variant with the hex hash. Will be unique unless two
-    // identical variants are in the file.
-    return hasher.final();
-}
-
 double median(std::vector<int> &v) {
     size_t n = v.size() / 2;
     std::nth_element(v.begin(), v.begin()+n, v.end());
@@ -482,54 +447,6 @@ double normal_inverse_cdf(double p) {
         /* return (q >= 0.)? r : -r ;*/
     }
     return val;
-}
-    
-void create_ref_allele(vcflib::Variant& variant, const std::string& allele) {
-    // Set the ref allele
-    variant.ref = allele;
-    
-    for(size_t i = 0; i < variant.ref.size(); i++) {
-        // Look at all the bases
-        if(variant.ref[i] != 'A' && variant.ref[i] != 'C' && variant.ref[i] != 'G' && variant.ref[i] != 'T') {
-            // Correct anything bogus (like "X") to N
-            variant.ref[i] = 'N';
-        }
-    }
-    
-    // Make it 0 in the alleles-by-index list
-    variant.alleles.push_back(allele);
-    // Build the reciprocal index-by-allele mapping
-    variant.updateAlleleIndexes();
-}
-
-int add_alt_allele(vcflib::Variant& variant, const std::string& allele) {
-    // Copy the allele so we can throw out bad characters
-    std::string fixed(allele);
-    
-    for(size_t i = 0; i < fixed.size(); i++) {
-        // Look at all the bases
-        if(fixed[i] != 'A' && fixed[i] != 'C' && fixed[i] != 'G' && fixed[i] != 'T') {
-            // Correct anything bogus (like "X") to N
-            fixed[i] = 'N';
-        }
-    }
-    
-    for(int i = 0; i < variant.alleles.size(); i++) {
-        if(variant.alleles[i] == fixed) {
-            // Already exists
-            return i;
-        }
-    }
-
-    // Add it as an alt
-    variant.alt.push_back(fixed);
-    // Make it next in the alleles-by-index list
-    variant.alleles.push_back(fixed);
-    // Build the reciprocal index-by-allele mapping
-    variant.updateAlleleIndexes();
-
-    // We added it in at the end
-    return variant.alleles.size() - 1;
 }
 
 // https://stackoverflow.com/a/19039500/238609

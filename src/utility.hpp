@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <fstream>
 #include <omp.h>
 #include <signal.h>
 #include <cstring>
@@ -18,7 +19,6 @@
 #include <unistd.h>
 #include "vg.pb.h"
 #include "sha1.hpp"
-#include "Variant.h"
 
 namespace vg {
 
@@ -282,31 +282,6 @@ namespace temp_file {
     string get_dir();
 
 } // namespace temp_file
-
-// Code to detect if a variant lacks an ID and give it a unique but repeatable
-// one.
-string get_or_make_variant_id(const vcflib::Variant& variant);
-string make_variant_id(const vcflib::Variant& variant);
-
-// TODO: move these to genotypekit on a VCF emitter?
-
-/**
- * Create the reference allele for an empty vcflib Variant, since apaprently
- * there's no method for that already. Must be called before any alt alleles are
- * added.
- */
-void create_ref_allele(vcflib::Variant& variant, const std::string& allele);
-
-/**
- * Add a new alt allele to a vcflib Variant, since apaprently there's no method
- * for that already.
- *
- * If that allele already exists in the variant, does not add it again.
- *
- * Retuerns the allele number (0, 1, 2, etc.) corresponding to the given allele
- * string in the given variant. 
- */
-int add_alt_allele(vcflib::Variant& variant, const std::string& allele);
 
 /**
  * We have a transforming map function that we can chain.

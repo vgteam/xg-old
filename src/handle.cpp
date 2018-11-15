@@ -1,5 +1,4 @@
 #include "handle.hpp"
-#include "snarls.hpp"
 
 /** \file handle.cpp
  * Implement handle graph utility methods.
@@ -11,10 +10,6 @@ using namespace std;
 
 handle_t HandleGraph::get_handle(const Visit& visit) const {
     return get_handle(visit.node_id(), visit.backward());
-}
-
-Visit HandleGraph::to_visit(const handle_t& handle) const {
-    return vg::to_visit(this->get_id(handle), this->get_is_reverse(handle));
 }
 
 handle_t HandleGraph::forward(const handle_t& handle) const {

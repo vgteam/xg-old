@@ -270,9 +270,6 @@ public:
     /// Must be using'd to avoid shadowing.
     handle_t get_handle(const Visit& visit) const;
     
-    /// Get a Protobuf Visit from a handle.
-    Visit to_visit(const handle_t& handle) const;
-    
     /// Get the locally forward version of a handle
     handle_t forward(const handle_t& handle) const;
     
