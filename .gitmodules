@@ -4,3 +4,6 @@
 [submodule "vg"]
 	path = vg
 	url = https://github.com/vgteam/vg.git
+[submodule "sparsepp"]
+	path = sparsepp
+	url = https://github.com/greg7mdp/sparsepp.git
