@@ -10,3 +10,6 @@
 [submodule "sha1"]
 	path = sha1
 	url = https://github.com/vog/sha1.git
+[submodule "htslib"]
+	path = htslib
+	url = https://github.com/samtools/htslib.git
