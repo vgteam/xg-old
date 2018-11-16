@@ -7,5 +7,5 @@ Name: xg
 Description: Succinct labeled graphs with collections and paths
 URL: https://github.com/vgteam/xg
 Version: @VERSION@
-Libs: -L${libdir} -lxg @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ -lprotobuf -lsdsl -ldivsufsort -ldivsufsort64 -lz
-Cflags: -I${includedir} @PTHREAD_CFLAGS@
+Libs: -L${libdir} -lxg @PROTOBUF_LIBS@ @SDSL_LIBS@ @SPARSEHASH_LIBS@ @HTSLIB_LIBS@ @JANSSON_LIBS@ -lz
+Cflags: -I${includedir} @OPENMP_CXXFLAGS@ @PROTOBUF_CFLAGS@ @SDSL_CFLAGS@ @SPARSEHASH_CFLAGS@ @HTSLIB_CFLAGS@ @JANSSON_CFLAGS@
