@@ -8,14 +8,11 @@ xg_SOURCES = main.cpp
 xg_LDADD = libxg.a @PTHREAD_LIBS@ @PROTOBUF_LIBS@ @SDSL_LIBS@ @SPARSEHASH_LIBS@ @HTSLIB_LIBS@ @JANSSON_LIBS@
 xg_LDFLAGS = @OPENMP_CXXFLAGS@
 
-BUILT_SOURCES = hash_map.hpp stream.hpp edit.hpp json2pb.h types.hpp nodetraversal.hpp region.hpp graph.hpp blocked_gzip_input_stream.hpp blocked_gzip_output_stream.hpp hfile_cppstream.hpp sha1.hpp sparsepp hfile_internal.h textutils_internal.h vg.pb.h
-
-hash_map.hpp:
-	git submodule init && git submodule update
-	cp ../vg/src/hash_map.hpp .
+BUILT_SOURCES = stream.hpp edit.hpp json2pb.h types.hpp nodetraversal.hpp region.hpp graph.hpp blocked_gzip_input_stream.hpp blocked_gzip_output_stream.hpp hfile_cppstream.hpp sha1.hpp sparsepp hfile_internal.h textutils_internal.h vg.pb.h
 
 stream.cpp: stream.hpp
 stream.hpp:
+	git submodule init && git submodule update
 	cp ../vg/src/stream.hpp .
 	cp ../vg/src/stream.cpp .
 

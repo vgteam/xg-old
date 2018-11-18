@@ -10,7 +10,7 @@ pkginclude_HEADERS = src/xg.hpp src/hash_map.hpp src/stream.hpp src/alignment.hp
 sparseppincludedir = $(pkgincludedir)/sparsepp
 sparseppinclude_HEADERS = src/sparsepp/spp_config.h  src/sparsepp/spp_dlalloc.h  src/sparsepp/spp.h  src/sparsepp/spp_memory.h  src/sparsepp/spp_smartptr.h  src/sparsepp/spp_stdint.h  src/sparsepp/spp_timer.h  src/sparsepp/spp_traits.h  src/sparsepp/spp_utils.h
 
-DISTCLEANFILES = src/hash_map.hpp src/stream.hpp src/stream.cpp src/edit.hpp src/edit.cpp src/json2pb.h src/json2pb.cpp src/types.hpp src/nodetraversal.hpp src/region.hpp src/region.cpp src/graph.hpp src/graph.cpp src/blocked_gzip_input_stream.hpp src/blocked_gzip_input_stream.cpp src/blocked_gzip_output_stream.hpp src/blocked_gzip_output_stream.cpp src/hfile_cppstream.hpp src/hfile_cppstream.cpp src/sha1.hpp src/sha1.cpp src/vg.pb.h src/vg.pb.cc src/hfile_internal.h src/textutils_internal.h src/vg.proto
+DISTCLEANFILES = src/stream.hpp src/stream.cpp src/edit.hpp src/edit.cpp src/json2pb.h src/json2pb.cpp src/types.hpp src/nodetraversal.hpp src/region.hpp src/region.cpp src/graph.hpp src/graph.cpp src/blocked_gzip_input_stream.hpp src/blocked_gzip_input_stream.cpp src/blocked_gzip_output_stream.hpp src/blocked_gzip_output_stream.cpp src/hfile_cppstream.hpp src/hfile_cppstream.cpp src/sha1.hpp src/sha1.cpp src/vg.pb.h src/vg.pb.cc src/hfile_internal.h src/textutils_internal.h src/vg.proto
 
 distclean-local:
 	-rm -rf src/sparsepp
