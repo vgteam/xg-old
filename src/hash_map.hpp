@@ -13,7 +13,7 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/dense_hash_set>
 #else
-#include <sparsepp/spp.h>
+#include "sparsepp/spp.h"
 #endif
 
 
